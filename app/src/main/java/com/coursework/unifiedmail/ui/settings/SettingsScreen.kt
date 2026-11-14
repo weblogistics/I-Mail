@@ -281,6 +281,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             SettingRow(
                 label = "Default view",
                 value = accounts.firstOrNull { it.id == settings.defaultViewAccountId }?.displayName ?: "Unified inbox",
+                caption = "Which screen opens when you launch the app",
                 onClick = { showDefaultViewDialog = true },
             )
             if (accounts.isNotEmpty()) {
@@ -288,7 +289,16 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     label = "Default send account",
                     value = accounts.firstOrNull { it.id == settings.defaultAccountId }?.displayName
                         ?: accounts.firstOrNull()?.displayName.orEmpty(),
+                    caption = "Which account composes new messages and shared files when you have more than one account",
                     onClick = { showDefaultAccountDialog = true },
+                )
+                // Each account's own signature is set from Edit Account, not here — this is the
+                // only hint of that in Settings, since nothing in Compose points there either.
+                Text(
+                    text = "Tip: each account's signature can be set from Manage accounts in the drawer menu",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                 )
             }
             SettingRow(
@@ -349,13 +359,23 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
 }
 
 @Composable
-private fun SettingRow(label: String, value: String, onClick: () -> Unit) {
+private fun SettingRow(label: String, value: String, onClick: () -> Unit, caption: String? = null) {
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         headlineContent = { Text(label) },
-        supportingContent = { Text(value) },
+        supportingContent = {
+            Column {
+                Text(value)
+                // Same small/muted style as the explanatory line under e.g. "Show message
+                // preview" above — those toggle rows already get one, dialog-opening rows never
+                // did, which is exactly why "Default view" and "Default send account" (two
+                // similarly-worded, adjacent rows controlling very different things) were easy to
+                // mix up.
+                caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        },
     )
 }
 
