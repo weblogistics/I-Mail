@@ -41,10 +41,6 @@ Everything below is still open unless checked off. Delete whatever you decide no
       tested — `MailIdleService` depends on a real Android foreground `Service`; see the test
       coverage item above for why that needs Robolectric/instrumented tests this project doesn't
       have set up).
-- [ ] Every single IMAP action (flag, move, open one attachment) opens a brand-new
-      connect+TLS+login round trip rather than reusing a short-lived connection — correct, just
-      slower than necessary on bad networks. Worth a connection-reuse pass if responsiveness on
-      slow networks becomes a complaint. **Strategy written up (not implemented) — see chat.**
 - [x] **`folderSyncMutexes` grows unbounded.** Fixed: evicted alongside everything else
       `deleteAccountAndCache` already cleans up for a removed account. Pushed.
 
@@ -64,3 +60,33 @@ Everything below is still open unless checked off. Delete whatever you decide no
 - [x] **Folder list's loading vs. empty state.** Checked — already handled correctly:
       `FolderListViewModel._isLoading` defaults to `true` and `FolderListScreen` only shows "No
       folders" once loading has actually finished with no error. No change needed.
+
+## Deferred — worth revisiting only if it actually becomes a complaint
+
+Correct as-is today; the cost of fixing is real (see strategy) and nobody's reported friction yet.
+Revisit if that changes rather than preemptively.
+
+- [ ] **Every single IMAP action (flag, move, open one attachment, sync) opens a brand-new
+      connect+TLS+login round trip** rather than reusing a short-lived connection across
+      back-to-back operations — correct, just slower than necessary on bad networks. Declined
+      2026-11-15 ("everything feels fine right now").
+
+      **Strategy, if this gets picked up later:**
+      1. Per-account connection cache (e.g. `ConcurrentHashMap<accountId, Store>`) in
+         `ImapClient.kt` — keep a `Store` open after a successful connect instead of closing it
+         at the end of each of its ~10 functions.
+      2. Check the cache first before each operation; a cached connection can still have gone
+         stale silently (IMAP servers idle-timeout connections without warning), so every call
+         site still needs a "retry once, reconnecting fresh" fallback regardless.
+      3. Evict on account deletion (same place as the `folderSyncMutexes` cleanup above) and
+         probably on an idle timer too — no reason to hold a socket open for an account the user
+         hasn't touched in 10 minutes.
+      4. Unrelated to `MailIdleService`'s own long-lived IDLE connection — this cache is only for
+         the short, one-off operations in `ImapClient`.
+
+      **Why it's medium-risk, not a quick win:** touches the most-exercised file in the app
+      (~10 call sites, not isolable to one function), needs its own per-account concurrency story
+      (two operations racing to reconnect at once is exactly the shape of bug this app's history
+      shows surfaces months later as "duplicate notifications"), and there's no way in this
+      environment to soak-test it against a real flaky mail server, which is the actual failure
+      mode this kind of caching tends to break under.
