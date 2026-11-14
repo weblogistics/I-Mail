@@ -66,16 +66,16 @@ class MainActivity : ComponentActivity() {
         // "which account, if any, should auto-open on top of Unified Inbox" this early.
         val startAccountId = deepLinkAccountId ?: runBlocking {
             val settings = settingsRepository.settings.first()
-            // A share needs *some* account to compose from even when the user's default view is
-            // Unified Inbox (so defaultViewAccountId is null) — unlike every other deep link here,
-            // which only ever fires once a real account already exists and was explicitly chosen.
-            // Settings.defaultAccountId (see AppSettings) is exactly that choice; falling back
-            // further to the first active account only covers an install from before that setting
-            // existed, where nothing has set it yet.
-            settings.defaultViewAccountId ?: if (shareUris.isNotEmpty()) {
+            if (shareUris.isNotEmpty()) {
+                // Which account to compose/share from is answered by defaultAccountId
+                // specifically (see AppSettings) — defaultViewAccountId answers a different
+                // question (which screen opens on launch) and must never override it here, even
+                // when the user happens to have both set to different accounts. Falling back
+                // further to the first active account only covers an install from before
+                // defaultAccountId existed, where nothing has set it yet.
                 settings.defaultAccountId ?: accountRepository.getAllAccountsOnce().firstOrNull { it.isActive }?.id
             } else {
-                null
+                settings.defaultViewAccountId
             }
         }
         setContent {
