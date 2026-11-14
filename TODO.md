@@ -14,10 +14,12 @@ Everything below is still open unless checked off. Delete whatever you decide no
       Retry/Discard only — no "Edit" (the draft row is already gone by the time something
       reaches the outbox, so there's nothing to reopen; Discard + compose a fresh message is the
       current equivalent).
-- [ ] **Gmail/Outlook.com onboarding fails with no useful hint.** Both require an App
-      Password/OAuth today; a real password just fails with a generic "Authentication failed —
-      check username and password" (`MailErrorMessages.kt` / `describeMailError`). Detect the
-      known-provider case and show a specific hint.
+- [x] **Gmail/Outlook.com onboarding fails with no useful hint.** Fixed: `describeMailError` now
+      takes an optional host and gives a provider-specific App Password hint for a known
+      Gmail/Outlook/Hotmail/Live host instead of the generic message — threaded through
+      `MailConnectionTester` (the Add Account "Test connection" moment) and every
+      `MailRepository` sync/move/search/outbox-send failure path that already had a host in
+      scope. Tested (`MailErrorMessagesTest`) and pushed.
 - [x] **Save isn't gated on a successful connection test.** Fixed: `AddAccountUiState.canSave`
       now also requires `connectionStatus == SUCCESS`; any further edit to a connection-relevant
       field resets that back to IDLE so a stale pass can't satisfy it. Tested
