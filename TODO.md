@@ -3,26 +3,37 @@
 Already fixed: TLS certificate validation was disabled (`ssl.trust = "*"`) and STARTTLS could
 silently downgrade to plaintext — both fixed in `data/remote/MailSessionFactory.kt`.
 
-Everything below is still open. Delete or check off whatever you decide not to do.
+Everything below is still open unless checked off. Delete whatever you decide not to do.
 
 ## Reliability
 
-- [ ] **Send failures are invisible.** `ComposeViewModel.send()` marks the UI "sent" as soon as
-      the message is queued; the real delivery happens later via the outbox worker. A permanent
-      failure is recorded as `OutboxStatus.FAILED` with a reason, but nothing in the UI ever
-      shows it — the user just believes it sent. Needs an Outbox/"Couldn't send" view with the
-      failure reason and a Retry/Edit action, surfaced at minimum as a badge or notification.
+- [x] **Send failures are invisible.** Fixed: `MailRepository.observeFailedOutbox`/
+      `retryOutboxItem`/`discardOutboxItem` + a "Couldn't send" section on the Drafts screen
+      (`DraftListScreen.kt`) showing the failure reason with Retry/Discard. Tested
+      (`MailRepositoryTest`) and pushed. Not done: no push notification/badge for it yet, and
+      Retry/Discard only — no "Edit" (the draft row is already gone by the time something
+      reaches the outbox, so there's nothing to reopen; Discard + compose a fresh message is the
+      current equivalent).
 - [ ] **Gmail/Outlook.com onboarding fails with no useful hint.** Both require an App
       Password/OAuth today; a real password just fails with a generic "Authentication failed —
       check username and password" (`MailErrorMessages.kt` / `describeMailError`). Detect the
       known-provider case and show a specific hint.
-- [ ] **Save isn't gated on a successful connection test.** `AddAccountViewModel.canSave` only
-      checks fields are non-blank — a typo'd password creates an account that looks fine and
-      only fails invisibly on the first background sync. Require (or auto-run) a passing test
-      before the account is actually saved.
-- [ ] No test coverage on the send path (`SmtpSender`, `MailConnectionTester`) or on
-      `CredentialStore`/`MailIdleService`/`SyncScheduler` — the most consequential and most
-      concurrency-sensitive code has the least safety net.
+- [x] **Save isn't gated on a successful connection test.** Fixed: `AddAccountUiState.canSave`
+      now also requires `connectionStatus == SUCCESS`; any further edit to a connection-relevant
+      field resets that back to IDLE so a stale pass can't satisfy it. Tested
+      (`AddAccountUiStateTest`) and pushed.
+- [x] No test coverage on the send path — partially fixed. Added `SmtpSenderImplTest` (MIME
+      construction + the error-wrapping contract via a pre-network failure) and
+      `MailErrorMessagesTest`. **Still untested, and likely to stay that way without new test
+      infrastructure:** `MailConnectionTester`'s two connect functions have no non-network code
+      path to exercise (connecting *is* the entire function, unlike `SmtpSender.send` which
+      builds a message object first) — and a real socket attempt hangs unpredictably in this
+      project's test-running environment rather than failing fast, so a reliable test here needs
+      either a mocking framework (Mockito/MockK — not currently a dependency) or a fake/local
+      mail server (e.g. GreenMail). `CredentialStore`/`MailIdleService`/`SyncScheduler` remain
+      untested too — they depend on real Android framework classes (EncryptedSharedPreferences,
+      a foreground Service, WorkManager) that need Robolectric or instrumented tests, neither of
+      which this project has set up.
 - [ ] `MailIdleService.runIdleLoop` retries forever even when the failure is a missing/invalid
       credential that can never succeed on retry — should stop (or back off much further) on
       that specific failure instead of treating it like a transient network blip.
