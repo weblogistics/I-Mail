@@ -119,6 +119,20 @@ fun EditAccountScreen(
         if (state.deleted) onAccountDeleted()
     }
 
+    if (state.pendingDefaultAccountChoices.isNotEmpty()) {
+        // The just-deleted account was the default send account and more than one other account
+        // remains — EditAccountViewModel can't silently guess which one should take over, so the
+        // delete flow pauses here instead of navigating away (see confirmDelete).
+        RadioOptionDialog(
+            title = "Choose a new default account",
+            options = state.pendingDefaultAccountChoices.map { it.id },
+            selected = state.pendingDefaultAccountChoices.first().id,
+            labelFor = { id -> state.pendingDefaultAccountChoices.firstOrNull { it.id == id }?.displayName ?: id },
+            onDismiss = viewModel::dismissDefaultAccountPrompt,
+            onSelect = viewModel::selectNewDefaultAccount,
+        )
+    }
+
     if (state.showDeleteConfirmation) {
         AlertDialog(
             onDismissRequest = viewModel::cancelDelete,

@@ -3,6 +3,7 @@ package com.coursework.unifiedmail.ui.onboarding
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.coursework.unifiedmail.data.local.AccountEntity
 import com.coursework.unifiedmail.data.local.FolderEntity
 import com.coursework.unifiedmail.data.local.MailSecurity
 import com.coursework.unifiedmail.data.remote.ImapConfig
@@ -13,6 +14,7 @@ import com.coursework.unifiedmail.data.remote.SmtpConfig
 import com.coursework.unifiedmail.data.repository.AccountRepository
 import com.coursework.unifiedmail.data.repository.MailRepository
 import com.coursework.unifiedmail.data.repository.SyncOutcome
+import com.coursework.unifiedmail.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +48,11 @@ data class EditAccountUiState(
     val saved: Boolean = false,
     val deleted: Boolean = false,
     val showDeleteConfirmation: Boolean = false,
+    // Set only when the just-deleted account was the default send account (see
+    // AppSettings.defaultAccountId) and more than one other account remains — [confirmDelete]
+    // can't silently pick one, so this stops the delete flow one step short of [deleted] until
+    // the user picks via [selectNewDefaultAccount]/[dismissDefaultAccountPrompt].
+    val pendingDefaultAccountChoices: List<AccountEntity> = emptyList(),
     val isResyncing: Boolean = false,
     val resyncMessage: String? = null,
     val isEmptyingTrash: Boolean = false,
@@ -67,6 +74,7 @@ class EditAccountViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
     private val mailConnectionTester: MailConnectionTester,
     private val mailRepository: MailRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val accountId: String = checkNotNull(savedStateHandle["accountId"])
@@ -215,8 +223,34 @@ class EditAccountViewModel @Inject constructor(
         viewModelScope.launch {
             val existing = accountRepository.getAccount(accountId) ?: return@launch
             mailRepository.deleteAccountAndCache(existing)
+            val wasDefaultAccount = settingsRepository.currentSettings().defaultAccountId == existing.id
+            if (wasDefaultAccount) {
+                // Never leave it pointing at the account that was just deleted, even while a
+                // choice below is still pending — a stale id here is exactly what left Compose
+                // (and the OS share sheet) silently unable to open before this setting existed.
+                settingsRepository.setDefaultAccountId(null)
+                val remaining = accountRepository.getAllAccountsOnce()
+                if (remaining.size > 1) {
+                    _uiState.update { it.copy(showDeleteConfirmation = false, pendingDefaultAccountChoices = remaining) }
+                    return@launch
+                }
+                remaining.singleOrNull()?.let { settingsRepository.setDefaultAccountId(it.id) }
+            }
             _uiState.update { it.copy(showDeleteConfirmation = false, deleted = true) }
         }
+    }
+
+    /** The user's explicit pick from [EditAccountUiState.pendingDefaultAccountChoices]. */
+    fun selectNewDefaultAccount(newDefaultAccountId: String) {
+        viewModelScope.launch {
+            settingsRepository.setDefaultAccountId(newDefaultAccountId)
+            _uiState.update { it.copy(pendingDefaultAccountChoices = emptyList(), deleted = true) }
+        }
+    }
+
+    /** Skipping the prompt leaves no default account set — Settings can always set one later. */
+    fun dismissDefaultAccountPrompt() {
+        _uiState.update { it.copy(pendingDefaultAccountChoices = emptyList(), deleted = true) }
     }
 
     /**

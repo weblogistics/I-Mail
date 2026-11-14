@@ -10,6 +10,7 @@ import com.coursework.unifiedmail.data.remote.MailTestResult
 import com.coursework.unifiedmail.data.remote.SmtpConfig
 import com.coursework.unifiedmail.data.repository.AccountRepository
 import com.coursework.unifiedmail.data.repository.NewAccount
+import com.coursework.unifiedmail.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +52,7 @@ data class AddAccountUiState(
 class AddAccountViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
     private val mailConnectionTester: MailConnectionTester,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddAccountUiState())
@@ -156,6 +158,13 @@ class AddAccountViewModel @Inject constructor(
                     smtpSecurity = state.smtpSecurity,
                 ),
             )
+            // First account ever (or the only one left after others were removed) becomes the
+            // default send account automatically — otherwise compose-from-Unified-Inbox and the
+            // OS share sheet would have no account to act as until the user went and set one
+            // manually in Settings. A second+ account never overrides whatever's already chosen.
+            if (accountRepository.getAllAccountsOnce().size == 1) {
+                settingsRepository.setDefaultAccountId(saved.id)
+            }
             _uiState.update { it.copy(isSaving = false, savedAccountId = saved.id) }
         }
     }

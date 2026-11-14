@@ -321,7 +321,8 @@ class FakeMessageDao : MessageDao {
 
     override suspend fun getAddressColumns(accountId: String, folderName: String): List<AddressColumns> =
         messages.filter { it.accountId == accountId && it.folderName == folderName }
-            .map { AddressColumns(it.toAddresses, it.ccAddresses) }
+            .sortedByDescending { it.sentDateEpochMillis ?: 0L }
+            .map { AddressColumns(it.toAddresses, it.ccAddresses, it.sentDateEpochMillis ?: 0L) }
 
     override suspend fun markRead(id: String, isRead: Boolean) {
         val index = messages.indexOfFirst { it.id == id }

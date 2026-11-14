@@ -328,10 +328,29 @@ class UnifiedInboxViewModel @Inject constructor(
     }
 
     /**
-     * Moves every currently selected message to its own account's Archive, then exits selection
-     * mode. No bulk "Move to a specific folder" here (unlike the per-account Inbox screen) — a
-     * multi-account selection has no single folder picker that makes sense across accounts.
+     * Moves every currently selected message to [targetFolderKey] within [accountId], then exits
+     * selection mode. Unlike [bulkArchive]/[bulkMoveToTrash] — a fixed destination that always
+     * exists per-account — an arbitrary folder picker only makes sense when every selected row
+     * belongs to the same account; the screen only offers this action in that case (see
+     * UnifiedInboxScreen's selectedAccountId), so [accountId] here is trusted rather than
+     * re-derived from the selection.
      */
+    fun bulkMoveTo(accountId: String, targetFolderKey: String) {
+        viewModelScope.launch {
+            val targets = selectedMessages()
+            val failures = targets.mapNotNull { message ->
+                val result = mailRepository.moveMessage(message.accountId, message.folderName, message.uid, targetFolderKey)
+                (result as? MoveOutcome.Failure)?.reason
+            }
+            _accountFolders.value[accountId]?.firstOrNull { MailRepository.localFolderKey(it.fullName) == targetFolderKey }?.let { folder ->
+                settingsRepository.recordMoveFolderUsage(accountId, folder.fullName)
+            }
+            reportBulkOutcome(failures, pluralMessage(targets.size, "Moved"))
+            _selectedIds.value = emptySet()
+        }
+    }
+
+    /** Moves every currently selected message to its own account's Archive, then exits selection mode. */
     fun bulkArchive() {
         viewModelScope.launch {
             val targets = selectedMessages()

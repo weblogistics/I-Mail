@@ -11,6 +11,14 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     // null = Unified Inbox is the home screen; an account id = that account's Inbox is.
     val defaultViewAccountId: String? = null,
+    // Which account a brand-new message is composed from when there's no other way to tell —
+    // the Unified Inbox compose button with more than one account, and the OS share sheet (see
+    // MainActivity's ACTION_SEND handling). Distinct from [defaultViewAccountId], which is only
+    // about which screen opens on launch and says nothing about which account to send as. Kept
+    // in sync with the account list by AddAccountViewModel (first/only account becomes the
+    // default automatically) and EditAccountViewModel (reassigned or cleared if its account is
+    // deleted) — never silently left pointing at a deleted account.
+    val defaultAccountId: String? = null,
     // How far back a folder's very first sync reaches (delta syncs afterwards are always
     // UID-based and ignore this). ALL_MAIL_SYNC_WINDOW_DAYS means no date bound at all.
     val syncWindowDays: Int = 30,

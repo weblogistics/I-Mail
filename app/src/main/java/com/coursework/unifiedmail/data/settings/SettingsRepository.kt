@@ -33,6 +33,7 @@ class SettingsRepository @Inject constructor(
         val CONFIRM_BEFORE_DELETE = booleanPreferencesKey("confirm_before_delete")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DEFAULT_VIEW_ACCOUNT_ID = stringPreferencesKey("default_view_account_id")
+        val DEFAULT_ACCOUNT_ID = stringPreferencesKey("default_account_id")
         val SYNC_WINDOW_DAYS = intPreferencesKey("sync_window_days")
         val LIST_DENSITY = stringPreferencesKey("list_density")
         val MESSAGE_TEXT_SIZE = stringPreferencesKey("message_text_size")
@@ -56,6 +57,7 @@ class SettingsRepository @Inject constructor(
             confirmBeforeDelete = prefs[Keys.CONFIRM_BEFORE_DELETE] ?: defaults.confirmBeforeDelete,
             themeMode = prefs[Keys.THEME_MODE]?.toEnumOrNull<ThemeMode>() ?: defaults.themeMode,
             defaultViewAccountId = prefs[Keys.DEFAULT_VIEW_ACCOUNT_ID],
+            defaultAccountId = prefs[Keys.DEFAULT_ACCOUNT_ID],
             syncWindowDays = prefs[Keys.SYNC_WINDOW_DAYS] ?: defaults.syncWindowDays,
             listDensity = prefs[Keys.LIST_DENSITY]?.toEnumOrNull<ListDensity>() ?: defaults.listDensity,
             messageTextSize = prefs[Keys.MESSAGE_TEXT_SIZE]?.toEnumOrNull<MessageTextSize>() ?: defaults.messageTextSize,
@@ -97,6 +99,13 @@ class SettingsRepository @Inject constructor(
     suspend fun setDefaultViewAccountId(accountId: String?) {
         context.settingsDataStore.edit {
             if (accountId == null) it.remove(Keys.DEFAULT_VIEW_ACCOUNT_ID) else it[Keys.DEFAULT_VIEW_ACCOUNT_ID] = accountId
+        }
+    }
+
+    /** `null` clears it — no account is auto-selected for compose/share until the user (or AddAccountViewModel/EditAccountViewModel — see [AppSettings.defaultAccountId]) sets one again. */
+    suspend fun setDefaultAccountId(accountId: String?) {
+        context.settingsDataStore.edit {
+            if (accountId == null) it.remove(Keys.DEFAULT_ACCOUNT_ID) else it[Keys.DEFAULT_ACCOUNT_ID] = accountId
         }
     }
 

@@ -95,6 +95,7 @@ fun InboxScreen(
     onReplyClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onReplyAllClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onForwardClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
+    onShareAttachmentClick: (accountId: String, folderKey: String, uid: Long, attachmentIndex: Int) -> Unit,
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -373,6 +374,7 @@ fun InboxScreen(
                     onReply = onReplyClick,
                     onReplyAll = onReplyAllClick,
                     onForward = onForwardClick,
+                    onShareAttachment = onShareAttachmentClick,
                     isFullScreen = isDetailFullScreen,
                     onFullScreenChange = { isDetailFullScreen = it },
                     modifier = Modifier.weight(1f),

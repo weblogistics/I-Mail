@@ -57,6 +57,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Makes the app itself a share target (a file shared from the Files app, Gallery,
+                 etc. offers "Mail" in the OS share sheet) — handled in MainActivity alongside the
+                 notification deep links it already reads from its Intent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- Sharing Shortcuts API: lets ContactShortcuts' published "recent people" shortcuts
+                 show up as direct-share targets right in the chooser, same as Gmail/Outlook. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <service

@@ -17,6 +17,7 @@ import com.coursework.unifiedmail.data.repository.ComposeDraft
 import com.coursework.unifiedmail.data.repository.DraftContent
 import com.coursework.unifiedmail.data.repository.EmailContact
 import com.coursework.unifiedmail.data.repository.MailRepository
+import com.coursework.unifiedmail.data.share.ContactShortcuts
 import com.coursework.unifiedmail.domain.richtext.PendingStyle
 import com.coursework.unifiedmail.domain.richtext.RichText
 import com.coursework.unifiedmail.domain.richtext.TextRun
@@ -93,6 +94,20 @@ class ComposeViewModel @Inject constructor(
     }
     private val sourceUid: Long = savedStateHandle.get<Long>("sourceUid") ?: -1L
     private val sourceFolderKey: String = savedStateHandle["sourceFolderKey"] ?: MailRepository.INBOX_FOLDER_KEY
+    // Set only by the attachment long-press "Share" action (see MessageDetailScreen) — indexes
+    // into sourceUid/sourceFolderKey's own attachments, same id scheme as AttachmentEntity.indexInMessage.
+    private val shareAttachmentIndex: Int = savedStateHandle.get<Int>("shareAttachmentIndex") ?: -1
+    // Set only when opened from the OS share sheet (see MainActivity/MailNavGraph) — one or more
+    // files shared in from another app. Multiple Uris travel as one "|"-joined route argument
+    // (see Routes.composeShareReceived) since nav arguments are plain strings.
+    private val shareUris: List<Uri> = savedStateHandle.get<String>("shareUris")
+        ?.takeIf { it.isNotBlank() }
+        ?.split("|")
+        ?.map(Uri::parse)
+        ?: emptyList()
+    // Set only when that share was aimed at a specific direct-share "recent people" target (see
+    // ContactShortcuts) rather than the app's own icon in the chooser.
+    private val shareRecipient: String? = savedStateHandle.get<String>("shareRecipient")?.takeIf { it.isNotBlank() }
 
     private val _uiState = MutableStateFlow(ComposeUiState(mode = mode))
     val uiState: StateFlow<ComposeUiState> = _uiState.asStateFlow()
@@ -120,6 +135,9 @@ class ComposeViewModel @Inject constructor(
                 val signatureBlock = signatureBlock(account?.signature)
                 if (mode == ComposeMode.NEW) {
                     if (signatureBlock.isNotEmpty()) _uiState.update { it.copy(bodyRuns = RichText.fromPlainText(signatureBlock)) }
+                    if (sourceUid >= 0 && shareAttachmentIndex >= 0) shareAttachment(sourceFolderKey, sourceUid, shareAttachmentIndex)
+                    if (shareUris.isNotEmpty()) addAttachments(shareUris)
+                    if (shareRecipient != null) _uiState.update { it.copy(to = shareRecipient) }
                 } else if (sourceUid >= 0) {
                     val source = mailRepository.getMessage(accountId, sourceFolderKey, sourceUid) ?: return@launch
                     sourceMessage = source
@@ -300,6 +318,24 @@ class ComposeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Like [forwardAttachments] but for the single attachment the user picked via the
+     * long-press "Share" action on an attachment chip, rather than every attachment on the
+     * source message.
+     */
+    private suspend fun shareAttachment(folderKey: String, uid: Long, attachmentIndex: Int) {
+        val attachment = mailRepository.getAttachments(accountId, folderKey, uid)
+            .firstOrNull { it.indexInMessage == attachmentIndex } ?: return
+        val cached = attachmentStorage.cachedBytes(attachment.id, attachment.fileName)
+        val downloaded = if (cached != null) {
+            DownloadedAttachment(attachment.fileName, attachment.mimeType, cached)
+        } else {
+            mailRepository.downloadAttachment(accountId, folderKey, uid, attachmentIndex).getOrNull() ?: return
+        }
+        val picked = attachmentStorage.copyDownloadedForOutbox(downloaded, draftId)
+        _uiState.update { it.copy(attachments = it.attachments + picked) }
+    }
+
     private fun splitAddresses(addresses: String?): List<String> =
         addresses?.split(";", ",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
 
@@ -450,6 +486,10 @@ class ComposeViewModel @Inject constructor(
             mailRepository.deleteDraft(draftId)
             SyncScheduler.enqueueOutboxSend(appContext)
             _uiState.update { it.copy(isSending = false, sent = true) }
+            // Fire-and-forget: recency just changed, so the OS share sheet's direct-share "recent
+            // people" targets (see ContactShortcuts) should reflect it — but refreshing them is
+            // never worth delaying the "sent" state the UI is already waiting on above.
+            launch { ContactShortcuts.refresh(appContext, mailRepository) }
         }
     }
 

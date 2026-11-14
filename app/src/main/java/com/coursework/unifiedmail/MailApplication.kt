@@ -3,12 +3,17 @@ package com.coursework.unifiedmail
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.coursework.unifiedmail.data.repository.MailRepository
 import com.coursework.unifiedmail.data.settings.SettingsRepository
+import com.coursework.unifiedmail.data.share.ContactShortcuts
 import com.coursework.unifiedmail.sync.MailIdleService
 import com.coursework.unifiedmail.sync.NotificationHelper
 import com.coursework.unifiedmail.sync.SyncScheduler
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
@@ -23,6 +28,9 @@ class MailApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var notificationHelper: NotificationHelper
+
+    @Inject
+    lateinit var mailRepository: MailRepository
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -44,5 +52,9 @@ class MailApplication : Application(), Configuration.Provider {
         if (settings.isPushSync) {
             MailIdleService.start(this)
         }
+        // Best-effort: populates the OS share sheet's direct-share "recent people" targets from
+        // whatever Sent mail is already cached, so a fresh install that's already synced doesn't
+        // need to send anything first (see ComposeViewModel.send for the other refresh trigger).
+        CoroutineScope(Dispatchers.IO).launch { ContactShortcuts.refresh(this@MailApplication, mailRepository) }
     }
 }

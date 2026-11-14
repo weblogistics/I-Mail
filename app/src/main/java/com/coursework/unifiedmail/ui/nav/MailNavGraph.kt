@@ -41,7 +41,7 @@ private object Routes {
     const val INBOX = "inbox/{accountId}/{folderKey}"
     const val MESSAGE_DETAIL = "message_detail/{accountId}/{folderKey}/{uid}"
     const val THREAD = "thread/{accountId}/{folderKey}/{conversationId}"
-    const val COMPOSE = "compose/{accountId}/{mode}?sourceUid={sourceUid}&sourceFolderKey={sourceFolderKey}&draftId={draftId}"
+    const val COMPOSE = "compose/{accountId}/{mode}?sourceUid={sourceUid}&sourceFolderKey={sourceFolderKey}&draftId={draftId}&shareAttachmentIndex={shareAttachmentIndex}&shareUris={shareUris}&shareRecipient={shareRecipient}"
 
     fun editAccount(accountId: String) = "edit_account/$accountId"
     fun folders(accountId: String) = "folders/$accountId"
@@ -59,6 +59,21 @@ private object Routes {
     fun composeForward(accountId: String, folderKey: String, sourceUid: Long) =
         "compose/$accountId/forward?sourceUid=$sourceUid&sourceFolderKey=${Uri.encode(folderKey)}"
     fun composeDraft(accountId: String, draftId: String) = "compose/$accountId/new?draftId=${Uri.encode(draftId)}"
+    fun composeShareAttachment(accountId: String, folderKey: String, sourceUid: Long, attachmentIndex: Int) =
+        "compose/$accountId/new?sourceUid=$sourceUid&sourceFolderKey=${Uri.encode(folderKey)}&shareAttachmentIndex=$attachmentIndex"
+
+    // Entry point for the OS share sheet (see MainActivity's ACTION_SEND/ACTION_SEND_MULTIPLE
+    // handling) — one or more files shared in from another app, optionally with a recipient
+    // already picked via a direct-share "recent people" target (see ContactShortcuts). Multiple
+    // Uris are joined with "|" (not a legal content:// URI character) into one opaque query value
+    // — Uri.encode here and Navigation's own decoding on the way back out (same contract as every
+    // other encoded argument in this file) means this only needs to survive a single encode/decode
+    // round trip, even though each Uri's own string may itself already contain percent-escapes.
+    fun composeShareReceived(accountId: String, uris: List<Uri>, recipientAddress: String?): String {
+        val joinedUris = Uri.encode(uris.joinToString("|") { it.toString() })
+        val recipientParam = recipientAddress?.let { "&shareRecipient=${Uri.encode(it)}" } ?: ""
+        return "compose/$accountId/new?shareUris=$joinedUris$recipientParam"
+    }
 }
 
 @Composable
@@ -71,13 +86,20 @@ fun MailNavGraph(
     // Set only by the notification's "Reply" quick action — opens a reply draft for that
     // message instead of the message itself (startFolderKey/startMessageUid still required).
     startReply: Boolean = false,
+    // Set only when launched via the OS share sheet (see MainActivity's ACTION_SEND/
+    // ACTION_SEND_MULTIPLE handling) — one or more files shared in from another app, opened
+    // straight into a new, prefilled draft rather than the inbox.
+    startShareUris: List<Uri> = emptyList(),
+    // Set only when that share was aimed at a specific direct-share "recent people" target (see
+    // ContactShortcuts) rather than the app's own icon in the chooser.
+    startShareRecipientAddress: String? = null,
     navController: NavHostController = rememberNavController(),
 ) {
     // Unified Inbox stays the true start destination (a stable back-stack root that never
     // dead-ends if the configured default account is later deleted) — a configured
     // single-mailbox default just auto-navigates on top of it once, exactly like tapping that
     // account from the drawer would. See AppSettings.defaultViewAccountId.
-    LaunchedEffect(startAccountId, startFolderKey, startMessageUid, startReply) {
+    LaunchedEffect(startAccountId, startFolderKey, startMessageUid, startReply, startShareUris, startShareRecipientAddress) {
         // Only ever consume the deep link against a genuinely fresh graph — this effect also
         // reruns after MainActivity is recreated with the SAME Intent still attached (a
         // foldable's fold/unfold is a configuration change, and a notification's
@@ -92,12 +114,18 @@ fun MailNavGraph(
         // so this is a reliable one-shot guard either way.
         if (navController.currentDestination?.route != Routes.UNIFIED_INBOX) return@LaunchedEffect
         if (startAccountId != null) {
-            navController.navigate(Routes.inbox(startAccountId))
-            if (startFolderKey != null && startMessageUid != null) {
-                if (startReply) {
-                    navController.navigate(Routes.composeReply(startAccountId, startFolderKey, startMessageUid))
-                } else {
-                    navController.navigate(Routes.messageDetail(startAccountId, startFolderKey, startMessageUid))
+            if (startShareUris.isNotEmpty()) {
+                // Lands straight on a prefilled compose screen — unlike the notification deep
+                // links below, there's no inbox screen underneath this to land on first.
+                navController.navigate(Routes.composeShareReceived(startAccountId, startShareUris, startShareRecipientAddress))
+            } else {
+                navController.navigate(Routes.inbox(startAccountId))
+                if (startFolderKey != null && startMessageUid != null) {
+                    if (startReply) {
+                        navController.navigate(Routes.composeReply(startAccountId, startFolderKey, startMessageUid))
+                    } else {
+                        navController.navigate(Routes.messageDetail(startAccountId, startFolderKey, startMessageUid))
+                    }
                 }
             }
         }
@@ -134,6 +162,9 @@ fun MailNavGraph(
                 },
                 onForwardClick = { accountId, folderKey, uid ->
                     navController.navigate(Routes.composeForward(accountId, folderKey, uid))
+                },
+                onShareAttachmentClick = { accountId, folderKey, uid, attachmentIndex ->
+                    navController.navigate(Routes.composeShareAttachment(accountId, folderKey, uid, attachmentIndex))
                 },
             )
         }
@@ -205,6 +236,9 @@ fun MailNavGraph(
                 onForwardClick = { replyAccountId, folderKey, uid ->
                     navController.navigate(Routes.composeForward(replyAccountId, folderKey, uid))
                 },
+                onShareAttachmentClick = { shareAccountId, folderKey, uid, attachmentIndex ->
+                    navController.navigate(Routes.composeShareAttachment(shareAccountId, folderKey, uid, attachmentIndex))
+                },
             )
         }
         composable(
@@ -242,6 +276,9 @@ fun MailNavGraph(
                 onForward = { accountId, folderKey, uid ->
                     navController.navigate(Routes.composeForward(accountId, folderKey, uid))
                 },
+                onShareAttachment = { accountId, folderKey, uid, attachmentIndex ->
+                    navController.navigate(Routes.composeShareAttachment(accountId, folderKey, uid, attachmentIndex))
+                },
                 // Replaces this message rather than stacking on it, so Back returns to the list.
                 onOpenMessage = { accountId, folderKey, uid ->
                     navController.navigate(Routes.messageDetail(accountId, folderKey, uid)) {
@@ -264,6 +301,18 @@ fun MailNavGraph(
                     defaultValue = MailRepository.INBOX_FOLDER_KEY
                 },
                 navArgument("draftId") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("shareAttachmentIndex") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                },
+                navArgument("shareUris") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("shareRecipient") {
                     type = NavType.StringType
                     defaultValue = ""
                 },

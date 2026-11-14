@@ -58,6 +58,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setDefaultViewAccountId(accountId) }
     }
 
+    fun setDefaultAccountId(accountId: String) {
+        viewModelScope.launch { settingsRepository.setDefaultAccountId(accountId) }
+    }
+
     fun setSyncWindowDays(days: Int) {
         viewModelScope.launch { settingsRepository.setSyncWindowDays(days) }
     }

@@ -43,8 +43,8 @@ private const val CONVERSATION_COLUMNS =
 
 data class AccountUnreadCount(val accountId: String, val unreadCount: Int)
 
-/** Projection for MailRepository.getAutocompleteContacts — just the two columns actually addresses live in. */
-data class AddressColumns(val toAddresses: String?, val ccAddresses: String?)
+/** Projection for MailRepository.getAutocompleteContacts — the two columns addresses live in, plus the date to rank by recency (see MailRepository.getRecentContacts). */
+data class AddressColumns(val toAddresses: String?, val ccAddresses: String?, val sentDateEpochMillis: Long)
 
 @Dao
 interface MessageDao {
@@ -65,8 +65,8 @@ interface MessageDao {
     )
     suspend fun getByUidWithoutHtml(accountId: String, folderName: String, uid: Long): MessageEntity?
 
-    /** Feeds MailRepository.getAutocompleteContacts — every To/Cc pair cached for one account's Sent folder. */
-    @Query("SELECT toAddresses, ccAddresses FROM messages WHERE accountId = :accountId AND folderName = :folderName")
+    /** Feeds MailRepository.getAutocompleteContacts/getRecentContacts — every To/Cc pair cached for one account's Sent folder, newest first. */
+    @Query("SELECT toAddresses, ccAddresses, sentDateEpochMillis FROM messages WHERE accountId = :accountId AND folderName = :folderName ORDER BY sentDateEpochMillis DESC")
     suspend fun getAddressColumns(accountId: String, folderName: String): List<AddressColumns>
 
     /** Lowest cached UID in this folder — the boundary "load older mail" pages backward from. */

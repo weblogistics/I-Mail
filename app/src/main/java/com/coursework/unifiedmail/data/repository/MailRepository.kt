@@ -724,6 +724,35 @@ class MailRepository @Inject constructor(
         return contacts.values.sortedBy { (it.displayName ?: it.address).lowercase() }
     }
 
+    /**
+     * The most recently emailed people across every active account's cached Sent folder, newest
+     * first — feeds the OS share sheet's "recent people" direct-share targets (see
+     * ContactShortcuts), as opposed to [getAutocompleteContacts], which is alphabetical since
+     * that's friendlier for scanning a typed-ahead list. Same local-cache-only contract as
+     * [getAutocompleteContacts]: call [refreshAutocompleteSource] first to keep it warm.
+     */
+    suspend fun getRecentContacts(limit: Int): List<EmailContact> {
+        data class Dated(val contact: EmailContact, val sentDateEpochMillis: Long)
+        val byAddress = LinkedHashMap<String, Dated>()
+        for (account in accountRepository.getAllAccountsOnce().filter { it.isActive }) {
+            val sentFolderKey = findSentFolderKey(account.id) ?: continue
+            // Already ORDER BY sentDateEpochMillis DESC, so within one account the first sighting
+            // of an address is its most recent use — but merging multiple accounts needs an
+            // explicit date comparison since each account's rows interleave independently.
+            for (row in messageDao.getAddressColumns(account.id, sentFolderKey)) {
+                for (raw in splitAddressList(row.toAddresses) + splitAddressList(row.ccAddresses)) {
+                    val contact = parseContact(raw) ?: continue
+                    val key = contact.address.lowercase()
+                    val existing = byAddress[key]
+                    if (existing == null || existing.sentDateEpochMillis < row.sentDateEpochMillis) {
+                        byAddress[key] = Dated(contact, row.sentDateEpochMillis)
+                    }
+                }
+            }
+        }
+        return byAddress.values.sortedByDescending { it.sentDateEpochMillis }.take(limit).map { it.contact }
+    }
+
     private fun splitAddressList(raw: String?): List<String> =
         raw?.split(";")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
 

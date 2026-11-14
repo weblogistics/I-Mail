@@ -85,6 +85,9 @@ fun MessageDetailScreen(
     onReply: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onReplyAll: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onForward: (accountId: String, folderKey: String, uid: Long) -> Unit,
+    // Long-press "Share" on an attachment — opens a new message with just that one file
+    // pre-attached (see ComposeViewModel's shareAttachment).
+    onShareAttachment: (accountId: String, folderKey: String, uid: Long, attachmentIndex: Int) -> Unit,
     // Extra top-bar actions supplied by the host — the wide-screen pane's full-screen toggle.
     paneActions: @Composable () -> Unit = {},
     // Opens another message in place of this one (previous/next). Null hides those buttons.
@@ -263,6 +266,13 @@ fun MessageDetailScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Download") }
+                    TextButton(
+                        onClick = {
+                            attachmentMenuFor = null
+                            onShareAttachment(viewModel.accountId, viewModel.folderKey, viewModel.uid, attachment.indexInMessage)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Share") }
                 }
             },
             confirmButton = {

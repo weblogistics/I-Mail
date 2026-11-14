@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -82,6 +83,7 @@ import com.coursework.unifiedmail.ui.components.MAX_LIST_PANE_WIDTH_DP
 import com.coursework.unifiedmail.ui.components.MIN_LIST_PANE_WIDTH_DP
 import com.coursework.unifiedmail.ui.components.MessageFilterButton
 import com.coursework.unifiedmail.ui.components.MessageListSkeleton
+import com.coursework.unifiedmail.ui.components.MoveToFolderDialog
 import com.coursework.unifiedmail.ui.components.SplitPaneDivider
 import com.coursework.unifiedmail.ui.components.rememberIsScrollingUp
 import com.coursework.unifiedmail.ui.components.rememberIsWideScreen
@@ -108,6 +110,7 @@ fun UnifiedInboxScreen(
     onReplyClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onReplyAllClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onForwardClick: (accountId: String, folderKey: String, uid: Long) -> Unit,
+    onShareAttachmentClick: (accountId: String, folderKey: String, uid: Long, attachmentIndex: Int) -> Unit,
     viewModel: UnifiedInboxViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -125,9 +128,16 @@ fun UnifiedInboxScreen(
     val settings by viewModel.settings.collectAsState()
     val selectedIds by viewModel.selectedIds.collectAsState()
     val selectionModeActive = selectedIds.isNotEmpty()
+    // Null when the current selection spans more than one account — "Move to" needs a single
+    // account's folder tree to show a picker for, unlike Archive/Trash, which always resolve to
+    // a fixed per-account destination regardless of how many accounts are selected.
+    val selectedAccountId = remember(selectedIds, messages) {
+        messages.filter { it.latestMessage.id in selectedIds }.map { it.latestMessage.accountId }.distinct().singleOrNull()
+    }
     val undoableAction by viewModel.undoableAction.collectAsState()
     val infoMessage by viewModel.infoMessage.collectAsState()
     var showAccountPicker by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -183,6 +193,25 @@ fun UnifiedInboxScreen(
             onPick = { accountId ->
                 showAccountPicker = false
                 onComposeClick(accountId)
+            },
+        )
+    }
+
+    // Only reachable while selectedAccountId is non-null (see the "Move to" button below), so
+    // it's always resolvable to a real account here.
+    if (showMoveDialog && selectedAccountId != null) {
+        val account = accounts.firstOrNull { it.id == selectedAccountId }
+        MoveToFolderDialog(
+            folders = accountFolders[selectedAccountId].orEmpty(),
+            trashFolderFullName = account?.trashFolderFullName,
+            archiveFolderFullName = account?.archiveFolderFullName,
+            spamFolderFullName = account?.spamFolderFullName,
+            recentFolderFullNames = settings.recentMoveFoldersFor(selectedAccountId),
+            mostUsedFolderFullNames = settings.mostUsedMoveFoldersFor(selectedAccountId),
+            onDismiss = { showMoveDialog = false },
+            onSelect = { folderKey ->
+                showMoveDialog = false
+                viewModel.bulkMoveTo(selectedAccountId, folderKey)
             },
         )
     }
@@ -280,6 +309,19 @@ fun UnifiedInboxScreen(
                             }
                             IconButton(onClick = viewModel::bulkArchive) {
                                 Icon(Icons.Filled.Archive, contentDescription = "Archive")
+                            }
+                            // Disabled when the selection spans more than one account — a folder
+                            // picker only makes sense for a single account's folder tree (see
+                            // selectedAccountId above).
+                            IconButton(
+                                onClick = {
+                                    val accountId = selectedAccountId ?: return@IconButton
+                                    viewModel.loadFoldersIfNeeded(accountId)
+                                    showMoveDialog = true
+                                },
+                                enabled = selectedAccountId != null,
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Move to")
                             }
                             IconButton(onClick = viewModel::bulkMoveToTrash) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Move to trash")
@@ -407,6 +449,7 @@ fun UnifiedInboxScreen(
                         onReply = onReplyClick,
                         onReplyAll = onReplyAllClick,
                         onForward = onForwardClick,
+                        onShareAttachment = onShareAttachmentClick,
                         isFullScreen = isDetailFullScreen,
                         onFullScreenChange = { isDetailFullScreen = it },
                         modifier = Modifier.weight(1f),

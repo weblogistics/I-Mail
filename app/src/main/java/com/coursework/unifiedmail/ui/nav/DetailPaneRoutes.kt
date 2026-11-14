@@ -94,6 +94,7 @@ fun MessageDetailPane(
     onReply: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onReplyAll: (accountId: String, folderKey: String, uid: Long) -> Unit,
     onForward: (accountId: String, folderKey: String, uid: Long) -> Unit,
+    onShareAttachment: (accountId: String, folderKey: String, uid: Long, attachmentIndex: Int) -> Unit,
     isFullScreen: Boolean,
     onFullScreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -131,6 +132,7 @@ fun MessageDetailPane(
                 onReply = onReply,
                 onReplyAll = onReplyAll,
                 onForward = onForward,
+                onShareAttachment = onShareAttachment,
                 paneActions = paneActions,
                 // Replaces this message rather than stacking on it, so Back returns to the list/thread.
                 onOpenMessage = { accountId, folderKey, uid ->

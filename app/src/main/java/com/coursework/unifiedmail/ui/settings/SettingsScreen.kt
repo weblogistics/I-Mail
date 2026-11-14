@@ -59,6 +59,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
     var showSyncIntervalDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showDefaultViewDialog by remember { mutableStateOf(false) }
+    var showDefaultAccountDialog by remember { mutableStateOf(false) }
     var showSyncWindowDialog by remember { mutableStateOf(false) }
     var showListDensityDialog by remember { mutableStateOf(false) }
     var showTextSizeDialog by remember { mutableStateOf(false) }
@@ -196,6 +197,21 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             },
         )
     }
+    if (showDefaultAccountDialog) {
+        // Unlike Default view, there's no "Unified Inbox" option here — composing/sharing
+        // always needs one real account to act as.
+        RadioOptionDialog(
+            title = "Default send account",
+            options = accounts.map { it.id },
+            selected = settings.defaultAccountId ?: accounts.firstOrNull()?.id.orEmpty(),
+            labelFor = { id -> accounts.firstOrNull { it.id == id }?.displayName ?: id },
+            onDismiss = { showDefaultAccountDialog = false },
+            onSelect = {
+                viewModel.setDefaultAccountId(it)
+                showDefaultAccountDialog = false
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -267,6 +283,14 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 value = accounts.firstOrNull { it.id == settings.defaultViewAccountId }?.displayName ?: "Unified inbox",
                 onClick = { showDefaultViewDialog = true },
             )
+            if (accounts.isNotEmpty()) {
+                SettingRow(
+                    label = "Default send account",
+                    value = accounts.firstOrNull { it.id == settings.defaultAccountId }?.displayName
+                        ?: accounts.firstOrNull()?.displayName.orEmpty(),
+                    onClick = { showDefaultAccountDialog = true },
+                )
+            }
             SettingRow(
                 label = "List density",
                 value = settings.listDensity.displayLabel(),
