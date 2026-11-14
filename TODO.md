@@ -75,11 +75,12 @@ default send account, bulk move, outbox retry/discard, Add Account disclosure, a
 - [x] **The Gmail/Outlook App Password hint got truncated in the one place it mattered most.**
       Fixed: `DraftListScreen.kt`'s failed-outbox row no longer caps the error text at 2 lines —
       the hint is several sentences long and needs to be fully readable there. Pushed.
-- [ ] **"Couldn't send" still has zero proactive signal.** Confirmed as the single biggest
-      real-world risk left: no badge, no notification — it only exists if the user happens to
-      open Drafts. The earlier fix made the failure *visible once found*, not *findable*. At
-      minimum: a badge count on the drawer's "Drafts" row (`AppDrawerContent.kt`), sourced from
-      `MailRepository.observeFailedOutbox()`.
+- [x] **"Couldn't send" had zero proactive signal.** Partially fixed: a count badge on the
+      drawer's "Drafts" row (`AppDrawerContent.kt`, sourced from
+      `UnifiedInboxViewModel.failedOutboxCount` / `MailRepository.observeFailedOutbox`), reachable
+      from every screen the drawer opens from. Pushed. Not done: no push notification, and the
+      per-account Inbox screen has no drawer/Drafts entry point at all, so this badge isn't
+      visible from there.
 - [ ] A connection-test failure on Add Account doesn't react at all — the error shows, but
       "Manual setup" stays collapsed and its caption still confidently says "filled in
       automatically" even right after a failure. Should auto-expand (or change its caption) when
