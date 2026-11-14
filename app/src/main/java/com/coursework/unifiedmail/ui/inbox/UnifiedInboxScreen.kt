@@ -119,6 +119,7 @@ fun UnifiedInboxScreen(
     val messages by viewModel.messages.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val accountFolders by viewModel.accountFolders.collectAsState()
+    val failedOutboxCount by viewModel.failedOutboxCount.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncError by viewModel.syncError.collectAsState()
     val lastSyncedAt by viewModel.lastSyncedAt.collectAsState()
@@ -266,6 +267,7 @@ fun UnifiedInboxScreen(
                     accounts = accounts,
                     accountFolders = accountFolders,
                     recentFoldersFor = { accountId -> settings.recentFoldersFor(accountId) },
+                    failedOutboxCount = failedOutboxCount,
                     onCombinedViewClick = { scope.launch { drawerState.close() } },
                     onExpandAccount = { accountId -> viewModel.loadFoldersIfNeeded(accountId) },
                     onFolderClick = { accountId, folder ->

@@ -113,6 +113,14 @@ class UnifiedInboxViewModel @Inject constructor(
     val accounts: StateFlow<List<AccountEntity>> = accountRepository.observeActiveAccounts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // Badges the drawer's "Drafts" row (see AppDrawerContent) — a message that permanently
+    // failed to send otherwise has zero proactive signal: the only way to ever learn about it is
+    // opening Drafts on a hunch. This doesn't fix that on its own, but it's the cheapest possible
+    // "something's wrong in here" cue available from every screen the drawer is reachable from.
+    val failedOutboxCount: StateFlow<Int> = mailRepository.observeFailedOutbox()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 

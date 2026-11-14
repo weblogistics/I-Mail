@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,6 +32,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.coursework.unifiedmail.data.local.AccountEntity
 import com.coursework.unifiedmail.data.local.FolderEntity
@@ -56,6 +59,10 @@ fun AppDrawerContent(
     // AppSettings.recentFoldersFor. Only the first [MAX_RECENT_FOLDERS_SHOWN] that still exist
     // and aren't already a shortcut get their own section.
     recentFoldersFor: (accountId: String) -> List<String> = { emptyList() },
+    // A message that permanently failed to send — see MailRepository.observeFailedOutbox — has
+    // no other proactive signal anywhere in the app; this is the cheapest "something needs your
+    // attention in here" cue reachable from every screen the drawer opens from. 0 hides it.
+    failedOutboxCount: Int = 0,
     onCombinedViewClick: () -> Unit,
     onExpandAccount: (accountId: String) -> Unit,
     onFolderClick: (accountId: String, folder: FolderEntity) -> Unit,
@@ -88,6 +95,11 @@ fun AppDrawerContent(
                 label = { Text("Drafts") },
                 selected = false,
                 icon = { Icon(Icons.Filled.Drafts, contentDescription = null) },
+                badge = if (failedOutboxCount > 0) {
+                    { Badge { Text("$failedOutboxCount", modifier = Modifier.semantics { contentDescription = "$failedOutboxCount message${if (failedOutboxCount == 1) "" else "s"} couldn't send" }) } }
+                } else {
+                    null
+                },
                 onClick = onDraftsClick,
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
             )
