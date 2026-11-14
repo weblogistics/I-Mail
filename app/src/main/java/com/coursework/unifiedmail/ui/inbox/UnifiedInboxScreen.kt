@@ -315,16 +315,22 @@ fun UnifiedInboxScreen(
                             IconButton(onClick = viewModel::bulkArchive) {
                                 Icon(Icons.Filled.Archive, contentDescription = "Archive")
                             }
-                            // Disabled when the selection spans more than one account — a folder
-                            // picker only makes sense for a single account's folder tree (see
-                            // selectedAccountId above).
+                            // Always tappable, even across a mixed-account selection — a folder
+                            // picker only makes sense for one account's folder tree (see
+                            // selectedAccountId above), but a *disabled* icon with no explanation
+                            // just reads as broken, especially since the per-account Inbox
+                            // screen's identical icon is never disabled. Explaining via Snackbar
+                            // on tap, rather than refusing to respond at all, was clearer.
                             IconButton(
                                 onClick = {
-                                    val accountId = selectedAccountId ?: return@IconButton
-                                    viewModel.loadFoldersIfNeeded(accountId)
-                                    showMoveDialog = true
+                                    val accountId = selectedAccountId
+                                    if (accountId != null) {
+                                        viewModel.loadFoldersIfNeeded(accountId)
+                                        showMoveDialog = true
+                                    } else {
+                                        scope.launch { snackbarHostState.showSnackbar("Select messages from one account to move them") }
+                                    }
                                 },
-                                enabled = selectedAccountId != null,
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Move to")
                             }
