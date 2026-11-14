@@ -222,7 +222,7 @@ class MailRepository @Inject constructor(
         )
 
         val matches = imapClient.searchFolder(imapConfig, folder.fullName, query)
-            .getOrElse { return SyncOutcome.Failure(describeMailError(it)) }
+            .getOrElse { return SyncOutcome.Failure(describeMailError(it, imapConfig.host)) }
         if (matches.isNotEmpty()) {
             persistMessages(accountId, folderKey, matches)
         }
@@ -244,7 +244,7 @@ class MailRepository @Inject constructor(
             .awaitAll()
 
         val failures = results.mapNotNull { (account, result) ->
-            result.exceptionOrNull()?.let { "${account.displayName}: ${describeMailError(it)}" }
+            result.exceptionOrNull()?.let { "${account.displayName}: ${describeMailError(it, account.imapHost)}" }
         }
         if (failures.isNotEmpty()) {
             return@coroutineScope SyncOutcome.Failure(failures.joinToString("\n"))
@@ -438,7 +438,7 @@ class MailRepository @Inject constructor(
         )
 
         val folders = imapClient.fetchFolders(imapConfig).getOrElse {
-            return SyncOutcome.Failure(describeMailError(it))
+            return SyncOutcome.Failure(describeMailError(it, imapConfig.host))
         }
         folderDao.insertAllIfAbsent(
             folders.map { folder ->
@@ -479,7 +479,7 @@ class MailRepository @Inject constructor(
                 syncWindowDays = syncWindowDays,
                 knownUids = knownUids,
             ).getOrElse {
-                return@withLock SyncOutcome.Failure(describeMailError(it))
+                return@withLock SyncOutcome.Failure(describeMailError(it, imapConfig.host))
             }
 
             if (fetchResult.messages.isNotEmpty()) {
@@ -548,7 +548,7 @@ class MailRepository @Inject constructor(
 
         return mutexFor(folder.id).withLock {
             val older = imapClient.fetchOlderMessages(imapConfig, folder.fullName, beforeUid = lowestCachedUid, limit = LOAD_OLDER_PAGE_SIZE)
-                .getOrElse { return@withLock SyncOutcome.Failure(describeMailError(it)) }
+                .getOrElse { return@withLock SyncOutcome.Failure(describeMailError(it, imapConfig.host)) }
 
             if (older.isNotEmpty()) {
                 persistMessages(accountId, folderKey, older)
@@ -587,7 +587,7 @@ class MailRepository @Inject constructor(
             removeMessageLocally(accountId, folderKey, uid)
             MoveOutcome.Success(targetFolderKey)
         } else {
-            MoveOutcome.Failure(describeMailError(result.exceptionOrNull() ?: Throwable("Could not move message")))
+            MoveOutcome.Failure(describeMailError(result.exceptionOrNull() ?: Throwable("Could not move message"), imapConfig.host))
         }
     }
 
@@ -619,7 +619,7 @@ class MailRepository @Inject constructor(
         )
 
         val found = imapClient.findMessageByMessageId(imapConfig, folder.fullName, messageIdHeader)
-            .getOrElse { return UndoMoveOutcome.Failure(describeMailError(it)) }
+            .getOrElse { return UndoMoveOutcome.Failure(describeMailError(it, imapConfig.host)) }
             ?: return UndoMoveOutcome.Failure("Couldn't find the message to undo — it may have been moved again")
 
         persistMessages(accountId, currentFolderKey, listOf(found))
@@ -794,7 +794,7 @@ class MailRepository @Inject constructor(
             password = password,
         )
 
-        imapClient.emptyFolder(imapConfig, folder.fullName).getOrElse { return SyncOutcome.Failure(describeMailError(it)) }
+        imapClient.emptyFolder(imapConfig, folder.fullName).getOrElse { return SyncOutcome.Failure(describeMailError(it, imapConfig.host)) }
         messageDao.getIdsMissing(accountId, trashFolderKey, presentUids = emptyList()).forEach { deleteAttachmentsAndCache(it) }
         messageDao.deleteMissing(accountId, trashFolderKey, presentUids = emptyList())
         return SyncOutcome.Success(0)
@@ -953,7 +953,7 @@ class MailRepository @Inject constructor(
             deleteOutboxAttachmentFiles(item.id, outboxAttachments)
             SendOutcome.Success
         } else {
-            val reason = describeMailError(result.exceptionOrNull() ?: Throwable("Could not send message"))
+            val reason = describeMailError(result.exceptionOrNull() ?: Throwable("Could not send message"), smtpConfig.host)
             outboxDao.updateStatus(item.id, OutboxStatus.FAILED, reason)
             SendOutcome.Failure(reason)
         }

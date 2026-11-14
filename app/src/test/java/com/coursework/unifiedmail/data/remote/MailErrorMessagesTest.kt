@@ -5,15 +5,41 @@ import java.net.UnknownHostException
 import javax.mail.AuthenticationFailedException
 import javax.mail.MessagingException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MailErrorMessagesTest {
 
     @Test
-    fun `authentication failure points at the password`() {
+    fun `authentication failure points at the password when no host is given`() {
         assertEquals(
             "Authentication failed — check username and password",
             describeMailError(AuthenticationFailedException("bad creds")),
+        )
+    }
+
+    @Test
+    fun `authentication failure against Gmail hints at an App Password`() {
+        val message = describeMailError(AuthenticationFailedException("bad creds"), host = "imap.gmail.com")
+
+        assertTrue(message.contains("App Password"))
+        assertTrue(message.contains("Gmail"))
+    }
+
+    @Test
+    fun `authentication failure against Outlook's office365 host hints at an App Password`() {
+        // Outlook.com, Hotmail, Live, and MSN all resolve to the same office365.com host via
+        // MailServerDefaults' known-provider guesses — one check covers all four.
+        val message = describeMailError(AuthenticationFailedException("bad creds"), host = "outlook.office365.com")
+
+        assertTrue(message.contains("App Password"))
+    }
+
+    @Test
+    fun `authentication failure against an unrecognized host stays generic`() {
+        assertEquals(
+            "Authentication failed — check username and password",
+            describeMailError(AuthenticationFailedException("bad creds"), host = "mail.mycompany.example"),
         )
     }
 

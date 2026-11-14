@@ -41,7 +41,7 @@ class MailConnectionTester @Inject constructor() {
             store.close()
         }.fold(
             onSuccess = { MailTestResult.Success },
-            onFailure = { MailTestResult.Failure(describeMailError(it)) },
+            onFailure = { MailTestResult.Failure(describeMailError(it, config.host)) },
         )
     }
 
@@ -53,7 +53,7 @@ class MailConnectionTester @Inject constructor() {
             transport.close()
         }.fold(
             onSuccess = { MailTestResult.Success },
-            onFailure = { MailTestResult.Failure(describeMailError(it)) },
+            onFailure = { MailTestResult.Failure(describeMailError(it, config.host)) },
         )
     }
 }
