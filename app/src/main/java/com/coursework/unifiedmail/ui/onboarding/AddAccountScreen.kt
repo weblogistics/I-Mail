@@ -131,7 +131,7 @@ fun AddAccountScreen(
 
             OutlinedButton(
                 onClick = viewModel::testConnection,
-                enabled = state.canSave && state.connectionStatus != ConnectionCheckStatus.TESTING,
+                enabled = state.canTestConnection && state.connectionStatus != ConnectionCheckStatus.TESTING,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.connectionStatus == ConnectionCheckStatus.TESTING) {
@@ -147,6 +147,15 @@ fun AddAccountScreen(
                     MaterialTheme.colorScheme.error
                 }
                 Text(text = message, color = color)
+            }
+            // Explains why Save is still disabled once every field looks filled in — otherwise a
+            // user who skips "Test connection" has no idea why the button won't respond.
+            if (state.canTestConnection && state.connectionStatus != ConnectionCheckStatus.SUCCESS) {
+                Text(
+                    text = "Test the connection successfully before saving",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Button(

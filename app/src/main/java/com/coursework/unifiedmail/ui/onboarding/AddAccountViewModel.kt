@@ -37,7 +37,8 @@ data class AddAccountUiState(
     val isSaving: Boolean = false,
     val savedAccountId: String? = null,
 ) {
-    val canSave: Boolean
+    /** Enough entered to attempt [AddAccountViewModel.testConnection] — doesn't require having passed one yet. */
+    val canTestConnection: Boolean
         get() = displayName.isNotBlank() &&
             emailAddress.isNotBlank() &&
             username.isNotBlank() &&
@@ -46,6 +47,16 @@ data class AddAccountUiState(
             imapPort.toIntOrNull() != null &&
             smtpHost.isNotBlank() &&
             smtpPort.toIntOrNull() != null
+
+    /**
+     * Also requires a passing connection test, unlike [canTestConnection] — a typo'd password or
+     * host used to save an account that looked fine and only failed invisibly on its first
+     * background sync. Any further edit to a connection-relevant field resets [connectionStatus]
+     * back to IDLE (see AddAccountViewModel's on*Change functions), so a stale pass from before
+     * that edit can't satisfy this.
+     */
+    val canSave: Boolean
+        get() = canTestConnection && connectionStatus == ConnectionCheckStatus.SUCCESS
 }
 
 @HiltViewModel
@@ -81,20 +92,24 @@ class AddAccountViewModel @Inject constructor(
                 smtpHost = guess.smtpHost,
                 smtpPort = guess.smtpPort.toString(),
                 smtpSecurity = guess.smtpSecurity,
-            )
+            ).invalidateConnectionCheck()
         }
     }
 
-    fun onUsernameChange(value: String) = _uiState.update { it.copy(username = value) }
-    fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value) }
-    fun onImapHostChange(value: String) = _uiState.update { it.copy(imapHost = value) }
-    fun onImapPortChange(value: String) = _uiState.update { it.copy(imapPort = value) }
+    fun onUsernameChange(value: String) = _uiState.update { it.copy(username = value).invalidateConnectionCheck() }
+    fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value).invalidateConnectionCheck() }
+    fun onImapHostChange(value: String) = _uiState.update { it.copy(imapHost = value).invalidateConnectionCheck() }
+    fun onImapPortChange(value: String) = _uiState.update { it.copy(imapPort = value).invalidateConnectionCheck() }
     fun onImapSecurityChange(value: MailSecurity) =
-        _uiState.update { it.copy(imapSecurity = value, imapPort = MailServerDefaults.imapPort(value).toString()) }
-    fun onSmtpHostChange(value: String) = _uiState.update { it.copy(smtpHost = value) }
-    fun onSmtpPortChange(value: String) = _uiState.update { it.copy(smtpPort = value) }
+        _uiState.update { it.copy(imapSecurity = value, imapPort = MailServerDefaults.imapPort(value).toString()).invalidateConnectionCheck() }
+    fun onSmtpHostChange(value: String) = _uiState.update { it.copy(smtpHost = value).invalidateConnectionCheck() }
+    fun onSmtpPortChange(value: String) = _uiState.update { it.copy(smtpPort = value).invalidateConnectionCheck() }
     fun onSmtpSecurityChange(value: MailSecurity) =
-        _uiState.update { it.copy(smtpSecurity = value, smtpPort = MailServerDefaults.smtpPort(value).toString()) }
+        _uiState.update { it.copy(smtpSecurity = value, smtpPort = MailServerDefaults.smtpPort(value).toString()).invalidateConnectionCheck() }
+
+    /** A previous test's result stops being trustworthy once a connection-relevant field changes again — back to IDLE so [AddAccountUiState.canSave] can't be satisfied by a now-stale pass. */
+    private fun AddAccountUiState.invalidateConnectionCheck(): AddAccountUiState =
+        if (connectionStatus == ConnectionCheckStatus.IDLE) this else copy(connectionStatus = ConnectionCheckStatus.IDLE, connectionMessage = null)
 
     fun testConnection() {
         val state = _uiState.value
