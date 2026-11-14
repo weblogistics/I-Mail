@@ -404,6 +404,10 @@ class MailRepository @Inject constructor(
         folderDao.deleteForAccount(account.id)
         attachmentDao.deleteForAccount(account.id)
         attachmentCache.deleteCachedForAccount(account.id)
+        // folderSyncMutexes is keyed by folderId(accountId, folderKey) — "$accountId|..." — and
+        // otherwise never shrinks, so a long-lived process with many account add/remove cycles
+        // would slowly accumulate dead Mutex objects for folders that no longer exist.
+        folderSyncMutexes.keys.removeAll { it.startsWith("${account.id}|") }
     }
 
     suspend fun downloadAttachment(accountId: String, folderKey: String, uid: Long, attachmentIndex: Int): Result<DownloadedAttachment> {
