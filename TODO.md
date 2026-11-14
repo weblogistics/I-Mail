@@ -46,9 +46,9 @@ Everything below is still open unless checked off. Delete whatever you decide no
 
 ## UX
 
-- [ ] Manual IMAP/SMTP host/port fields are always shown on Add Account even though
-      auto-detection already fills them for known providers. Collapse behind a "Manual setup"
-      disclosure, pre-filled but hidden by default.
+- [x] **Manual IMAP/SMTP host/port fields are always shown on Add Account.** Fixed: collapsed
+      behind a "Manual setup" disclosure (`AddAccountScreen.kt`), pre-filled but hidden by
+      default, with a hint when settings were auto-filled. Pushed.
 - [x] **"Default view"/"Default send account" read as near-identical rows.** Fixed: added a
       caption slot to `SettingRow`, used for both. Pushed.
 - [x] **Per-account signature isn't hinted at anywhere.** Fixed: a one-line pointer in Settings
