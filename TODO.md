@@ -85,10 +85,9 @@ default send account, bulk move, outbox retry/discard, Add Account disclosure, a
       "Manual setup" stays collapsed and its caption still confidently says "filled in
       automatically" even right after a failure. Should auto-expand (or change its caption) when
       `connectionStatus == FAILED`.
-- [ ] Unified Inbox's disabled "Move to" icon (mixed-account selection) gives no explanation —
-      just dims, with no tooltip/toast, and is inconsistent with the per-account Inbox screen
-      where the same icon is never disabled. Add a toast/snackbar on tap-while-disabled, or a
-      long-press tooltip.
+- [x] **Unified Inbox's disabled "Move to" icon gave no explanation.** Fixed: the icon is now
+      always tappable; a mixed-account selection shows a Snackbar explaining why instead of just
+      dimming with no feedback. Pushed.
 - [ ] A failed outbox attachment read can crash instead of failing gracefully, and there's a
       narrow race between a background `flushOutbox()` and the user tapping Discard on the same
       item (`MailRepository.kt`, `sendOutboxItem`'s `File(...).readBytes()` isn't inside the
