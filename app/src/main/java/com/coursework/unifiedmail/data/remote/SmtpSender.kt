@@ -86,8 +86,8 @@ class SmtpSenderImpl @Inject constructor() : SmtpSender {
         }
     }
 
-    /** multipart/alternative(plain, html) when [html] is present, otherwise a plain text/plain part — the required plain-text fallback either way. */
-    private fun buildTextPart(body: String, html: String?): MimeBodyPart = MimeBodyPart().apply {
+    /** multipart/alternative(plain, html) when [html] is present, otherwise a plain text/plain part — the required plain-text fallback either way. Internal (not private) so SmtpSenderImplTest can verify the MIME structure directly, without needing a live SMTP server. */
+    internal fun buildTextPart(body: String, html: String?): MimeBodyPart = MimeBodyPart().apply {
         if (html != null) {
             val alternative = MimeMultipart("alternative")
             alternative.addBodyPart(MimeBodyPart().apply { setText(body, "UTF-8") })
