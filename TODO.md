@@ -34,28 +34,33 @@ Everything below is still open unless checked off. Delete whatever you decide no
       untested too — they depend on real Android framework classes (EncryptedSharedPreferences,
       a foreground Service, WorkManager) that need Robolectric or instrumented tests, neither of
       which this project has set up.
-- [ ] `MailIdleService.runIdleLoop` retries forever even when the failure is a missing/invalid
-      credential that can never succeed on retry — should stop (or back off much further) on
-      that specific failure instead of treating it like a transient network blip.
+- [x] **`MailIdleService.runIdleLoop` retries forever on a missing credential.** Fixed: a
+      dedicated `MissingCredentialsException` + 1-hour backoff instead of the usual max-5-minute
+      one — stops hammering reconnect for an account that can never succeed until the user
+      re-enters a password, while still recovering on its own if they do. Pushed (not unit
+      tested — `MailIdleService` depends on a real Android foreground `Service`; see the test
+      coverage item above for why that needs Robolectric/instrumented tests this project doesn't
+      have set up).
 - [ ] Every single IMAP action (flag, move, open one attachment) opens a brand-new
       connect+TLS+login round trip rather than reusing a short-lived connection — correct, just
       slower than necessary on bad networks. Worth a connection-reuse pass if responsiveness on
-      slow networks becomes a complaint.
-- [ ] `folderSyncMutexes` in `MailRepository.kt` grows unbounded — entries aren't evicted when an
-      account/folder is deleted. Minor; bounded by realistic account/folder counts in practice.
+      slow networks becomes a complaint. **Strategy written up (not implemented) — see chat.**
+- [x] **`folderSyncMutexes` grows unbounded.** Fixed: evicted alongside everything else
+      `deleteAccountAndCache` already cleans up for a removed account. Pushed.
 
 ## UX
 
 - [ ] Manual IMAP/SMTP host/port fields are always shown on Add Account even though
       auto-detection already fills them for known providers. Collapse behind a "Manual setup"
       disclosure, pre-filled but hidden by default.
-- [ ] "Default view" and "Default send account" read as near-identical rows in Settings with no
-      distinguishing caption, unlike other settings on that screen. Add the same short caption
-      style used elsewhere.
-- [ ] Per-account signature is only discoverable by opening Edit Account — not hinted at from
-      Settings or Compose.
-- [ ] Zero-account empty state says "open the menu to add one" instead of offering an inline
-      "Add account" button directly in the empty state.
-- [ ] Folder list's empty state may not distinguish "still loading" from "genuinely empty" the
-      way the inbox skeleton does for messages — worth mirroring that pattern if not already
-      covered.
+- [x] **"Default view"/"Default send account" read as near-identical rows.** Fixed: added a
+      caption slot to `SettingRow`, used for both. Pushed.
+- [x] **Per-account signature isn't hinted at anywhere.** Fixed: a one-line pointer in Settings
+      ("each account's signature can be set from Manage accounts in the drawer menu"), right
+      below the account-related settings. Pushed.
+- [x] **Zero-account empty state has no inline action.** Fixed: `EmptyState` now takes an
+      optional `actionLabel`/`onAction`; Unified Inbox's empty state offers "Add account"
+      directly, skipping the account-list screen. Pushed.
+- [x] **Folder list's loading vs. empty state.** Checked — already handled correctly:
+      `FolderListViewModel._isLoading` defaults to `true` and `FolderListScreen` only shows "No
+      folders" once loading has actually finished with no error. No change needed.
