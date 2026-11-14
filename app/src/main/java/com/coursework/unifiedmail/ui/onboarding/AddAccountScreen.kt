@@ -1,7 +1,9 @@
 package com.coursework.unifiedmail.ui.onboarding
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -10,6 +12,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,6 +51,11 @@ fun AddAccountScreen(
     viewModel: AddAccountViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    // Collapsed by default — onEmailAddressChange already autodetects host/port/security for
+    // most domains, so most users never need to see these fields at all. Survives rotation
+    // (rememberSaveable) since an explicit expand is a deliberate choice worth keeping, not
+    // incidental UI state.
+    var manualSetupExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(state.savedAccountId) {
         if (state.savedAccountId != null) onAccountSaved()
@@ -97,37 +110,61 @@ fun AddAccountScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            SectionLabel("Incoming mail (IMAP)")
-            FlatTextField(
-                value = state.imapHost,
-                onValueChange = viewModel::onImapHostChange,
-                label = { Text(stringResource(R.string.field_imap_host)) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            FlatTextField(
-                value = state.imapPort,
-                onValueChange = viewModel::onImapPortChange,
-                label = { Text(stringResource(R.string.field_imap_port)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SecurityChipRow(selected = state.imapSecurity, onSelected = viewModel::onImapSecurityChange)
+            // Collapsed by default — most domains get a working host/port/security guess from
+            // onEmailAddressChange's autodetection (see MailServerDefaults.guessForEmail), so most
+            // users never need to look at, let alone edit, any of this.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { manualSetupExpanded = !manualSetupExpanded },
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Manual setup")
+                    if (!manualSetupExpanded && (state.imapHost.isNotBlank() || state.smtpHost.isNotBlank())) {
+                        Text(
+                            "Server settings filled in automatically — tap to review or edit",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Icon(
+                    if (manualSetupExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (manualSetupExpanded) "Collapse" else "Expand",
+                )
+            }
+            if (manualSetupExpanded) {
+                SectionLabel("Incoming mail (IMAP)")
+                FlatTextField(
+                    value = state.imapHost,
+                    onValueChange = viewModel::onImapHostChange,
+                    label = { Text(stringResource(R.string.field_imap_host)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FlatTextField(
+                    value = state.imapPort,
+                    onValueChange = viewModel::onImapPortChange,
+                    label = { Text(stringResource(R.string.field_imap_port)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SecurityChipRow(selected = state.imapSecurity, onSelected = viewModel::onImapSecurityChange)
 
-            SectionLabel("Outgoing mail (SMTP)")
-            FlatTextField(
-                value = state.smtpHost,
-                onValueChange = viewModel::onSmtpHostChange,
-                label = { Text(stringResource(R.string.field_smtp_host)) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            FlatTextField(
-                value = state.smtpPort,
-                onValueChange = viewModel::onSmtpPortChange,
-                label = { Text(stringResource(R.string.field_smtp_port)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SecurityChipRow(selected = state.smtpSecurity, onSelected = viewModel::onSmtpSecurityChange)
+                SectionLabel("Outgoing mail (SMTP)")
+                FlatTextField(
+                    value = state.smtpHost,
+                    onValueChange = viewModel::onSmtpHostChange,
+                    label = { Text(stringResource(R.string.field_smtp_host)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FlatTextField(
+                    value = state.smtpPort,
+                    onValueChange = viewModel::onSmtpPortChange,
+                    label = { Text(stringResource(R.string.field_smtp_port)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SecurityChipRow(selected = state.smtpSecurity, onSelected = viewModel::onSmtpSecurityChange)
+            }
 
             OutlinedButton(
                 onClick = viewModel::testConnection,
