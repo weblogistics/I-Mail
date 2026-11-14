@@ -63,6 +63,47 @@ Everything below is still open unless checked off. Delete whatever you decide no
       `FolderListViewModel._isLoading` defaults to `true` and `FolderListScreen` only shows "No
       folders" once loading has actually finished with no error. No change needed.
 
+## Follow-up from the second audit (2026-11-15)
+
+A fresh pass focused on everything added since the first audit (Share-to-email, OS share-sheet,
+default send account, bulk move, outbox retry/discard, Add Account disclosure, auth hints).
+
+- [x] **`defaultAccountId` was silently ignored for sharing whenever "Default view" was pinned to
+      a specific account.** Fixed: `MainActivity.kt`'s share-account resolution now checks
+      `defaultAccountId` first, unconditionally of `defaultViewAccountId` — they answer different
+      questions and one was overriding the other. Pushed.
+- [x] **The Gmail/Outlook App Password hint got truncated in the one place it mattered most.**
+      Fixed: `DraftListScreen.kt`'s failed-outbox row no longer caps the error text at 2 lines —
+      the hint is several sentences long and needs to be fully readable there. Pushed.
+- [ ] **"Couldn't send" still has zero proactive signal.** Confirmed as the single biggest
+      real-world risk left: no badge, no notification — it only exists if the user happens to
+      open Drafts. The earlier fix made the failure *visible once found*, not *findable*. At
+      minimum: a badge count on the drawer's "Drafts" row (`AppDrawerContent.kt`), sourced from
+      `MailRepository.observeFailedOutbox()`.
+- [ ] A connection-test failure on Add Account doesn't react at all — the error shows, but
+      "Manual setup" stays collapsed and its caption still confidently says "filled in
+      automatically" even right after a failure. Should auto-expand (or change its caption) when
+      `connectionStatus == FAILED`.
+- [ ] Unified Inbox's disabled "Move to" icon (mixed-account selection) gives no explanation —
+      just dims, with no tooltip/toast, and is inconsistent with the per-account Inbox screen
+      where the same icon is never disabled. Add a toast/snackbar on tap-while-disabled, or a
+      long-press tooltip.
+- [ ] A failed outbox attachment read can crash instead of failing gracefully, and there's a
+      narrow race between a background `flushOutbox()` and the user tapping Discard on the same
+      item (`MailRepository.kt`, `sendOutboxItem`'s `File(...).readBytes()` isn't inside the
+      `Result`/`runCatching` boundary the rest of that function uses). Low-probability but a real
+      uncaught-exception path.
+- [ ] `ContactShortcuts.refresh`'s remove-then-add isn't atomic — a process death mid-refresh
+      briefly empties Direct Share targets until the next successful refresh. Self-healing;
+      minor.
+- [ ] Direct Share shortcuts aren't per-account aware — tapping "Share to Jane" always uses the
+      default account even if Jane was only ever emailed from a different one. Known
+      simplification, not currently worth the complexity of tracking per-contact account history.
+- [ ] `MainActivity.kt` trusts `EXTRA_SHORTCUT_ID` from *any* incoming `ACTION_SEND` intent (not
+      just our own published shortcuts) to pre-fill the recipient — a malicious app could craft a
+      share intent that pre-fills an unexpected "To" address. Low impact (user still reviews
+      before sending) but worth a comment acknowledging it's untrusted input.
+
 ## Deferred — worth revisiting only if it actually becomes a complaint
 
 Correct as-is today; the cost of fixing is real (see strategy) and nobody's reported friction yet.
