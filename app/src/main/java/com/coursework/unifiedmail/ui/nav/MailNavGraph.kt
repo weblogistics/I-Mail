@@ -144,6 +144,7 @@ fun MailNavGraph(
         composable(Routes.UNIFIED_INBOX) {
             UnifiedInboxScreen(
                 onManageAccountsClick = { navController.navigate(Routes.ACCOUNTS) },
+                onAddAccountClick = { navController.navigate(Routes.ADD_ACCOUNT) },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
                 onFolderClick = { accountId, folderKey -> navController.navigate(Routes.inbox(accountId, folderKey)) },
                 onDraftsClick = { navController.navigate(Routes.DRAFTS) },

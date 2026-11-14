@@ -101,6 +101,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun UnifiedInboxScreen(
     onManageAccountsClick: () -> Unit,
+    // A direct shortcut for the zero-account empty state — skips the extra tap through the
+    // account list that onManageAccountsClick alone would require on a brand-new install.
+    onAddAccountClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onFolderClick: (accountId: String, folderKey: String) -> Unit,
     onDraftsClick: () -> Unit,
@@ -430,6 +433,7 @@ fun UnifiedInboxScreen(
                                         popUpTo(detailNavController.graph.startDestinationId)
                                     }
                                 },
+                                onAddAccountClick = onAddAccountClick,
                                 listState = listState,
                             )
                             Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { composeButton() }
@@ -471,6 +475,7 @@ fun UnifiedInboxScreen(
                     viewModel = viewModel,
                     onMessageClick = onMessageClick,
                     onThreadClick = onThreadClick,
+                    onAddAccountClick = onAddAccountClick,
                     listState = listState,
                 )
             }
@@ -513,6 +518,7 @@ private fun UnifiedMessageListPane(
     viewModel: UnifiedInboxViewModel,
     onMessageClick: (accountId: String, uid: Long) -> Unit,
     onThreadClick: (accountId: String, conversationId: String) -> Unit,
+    onAddAccountClick: () -> Unit,
     listState: LazyListState,
     // Wide screens: whether a row is the one open in the detail pane (highlighted).
     isRowOpen: (ConversationSummary) -> Boolean = { false },
@@ -560,7 +566,12 @@ private fun UnifiedMessageListPane(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (accounts.isEmpty()) {
-                EmptyState(icon = Icons.Filled.Inbox, message = "No accounts yet. Open the menu to add one.")
+                EmptyState(
+                    icon = Icons.Filled.Inbox,
+                    message = "No accounts yet.",
+                    actionLabel = "Add account",
+                    onAction = onAddAccountClick,
+                )
             } else if (messages.isEmpty() && isSyncing && searchQuery.isBlank() && !anyFilterActive) {
                 // Distinguishes "still syncing" from "genuinely empty" — a blank list +
                 // spinner reads the same as either.
