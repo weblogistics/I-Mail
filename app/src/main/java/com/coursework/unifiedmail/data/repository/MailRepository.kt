@@ -882,6 +882,27 @@ class MailRepository @Inject constructor(
         return allSucceeded
     }
 
+    /**
+     * Permanently-failed outbox items, newest first — without this, [sendOutboxItem] recording
+     * `OutboxStatus.FAILED` with a reason was invisible: the compose screen already shows "sent"
+     * the moment a message is queued (see ComposeViewModel.send), so a real failure (bad
+     * recipient, rejected attachment, expired auth) previously vanished into a background
+     * retry loop the user never saw. Surfaced on the Drafts screen — see DraftListScreen.
+     */
+    fun observeFailedOutbox(): Flow<List<OutboxEntity>> = outboxDao.observeFailed()
+
+    /** Re-attempts one failed item right away rather than waiting for the next periodic sync or network-constrained worker run. */
+    suspend fun retryOutboxItem(outboxId: String): SendOutcome {
+        val item = outboxDao.getById(outboxId) ?: return SendOutcome.Failure("Message no longer exists")
+        return sendOutboxItem(item)
+    }
+
+    /** Discards a failed outbox item for good — otherwise [flushOutbox] would keep retrying something the user has already given up on indefinitely. */
+    suspend fun discardOutboxItem(outboxId: String) {
+        deleteOutboxAttachmentFiles(outboxId, outboxAttachmentDao.getForOutbox(outboxId))
+        outboxDao.delete(outboxId)
+    }
+
     private suspend fun sendOutboxItem(item: OutboxEntity): SendOutcome {
         val account = accountRepository.getAccount(item.accountId)
         if (account == null) {
@@ -925,19 +946,23 @@ class MailRepository @Inject constructor(
         val result = smtpSender.send(smtpConfig, outgoing)
         return if (result.isSuccess) {
             outboxDao.updateStatus(item.id, OutboxStatus.SENT, null)
-            if (outboxAttachments.isNotEmpty()) {
-                outboxAttachmentDao.deleteForOutbox(item.id)
-                for (attachment in outboxAttachments) {
-                    runCatching { File(attachment.localFilePath).delete() }
-                }
-                runCatching { File(outboxAttachments.first().localFilePath).parentFile?.delete() }
-            }
+            deleteOutboxAttachmentFiles(item.id, outboxAttachments)
             SendOutcome.Success
         } else {
             val reason = describeMailError(result.exceptionOrNull() ?: Throwable("Could not send message"))
             outboxDao.updateStatus(item.id, OutboxStatus.FAILED, reason)
             SendOutcome.Failure(reason)
         }
+    }
+
+    /** Shared by a successful send (its outbox row is about to become SENT) and [discardOutboxItem] (the row is being dropped outright) — both need the same private-storage copies gone, not just the DB rows. */
+    private suspend fun deleteOutboxAttachmentFiles(outboxId: String, attachments: List<OutboxAttachmentEntity>) {
+        if (attachments.isEmpty()) return
+        outboxAttachmentDao.deleteForOutbox(outboxId)
+        for (attachment in attachments) {
+            runCatching { File(attachment.localFilePath).delete() }
+        }
+        runCatching { File(attachments.first().localFilePath).parentFile?.delete() }
     }
 
     private fun String.splitAddresses(): List<String> = split(";").map { it.trim() }.filter { it.isNotBlank() }

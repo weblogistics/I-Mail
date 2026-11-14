@@ -457,6 +457,85 @@ class MailRepositoryTest {
     }
 
     @Test
+    fun `observeFailedOutbox only exposes FAILED items, not PENDING or SENT`() = runTest {
+        smtpSender.result = Result.failure(RuntimeException("rejected"))
+        val failedId = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        repository.flushOutbox()
+        // Queued after the only flushOutbox() call above, so it's never actually attempted —
+        // flushOutbox() would otherwise send every unsent item in one pass, including this one.
+        repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("b@example.com"), subject = "Still pending", body = "Body"),
+        )
+
+        val failed = repository.observeFailedOutbox().first()
+
+        assertEquals(listOf(failedId), failed.map { it.id })
+    }
+
+    @Test
+    fun `retryOutboxItem resends and clears the error once it succeeds`() = runTest {
+        smtpSender.result = Result.failure(RuntimeException("temporary failure"))
+        val id = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        repository.flushOutbox()
+        assertEquals(OutboxStatus.FAILED, outboxDao.items[id]?.status)
+
+        smtpSender.result = Result.success(Unit)
+        val outcome = repository.retryOutboxItem(id)
+
+        assertTrue(outcome is SendOutcome.Success)
+        assertEquals(OutboxStatus.SENT, outboxDao.items[id]?.status)
+        assertEquals(null, outboxDao.items[id]?.errorMessage)
+    }
+
+    @Test
+    fun `retryOutboxItem records the new failure reason when it fails again`() = runTest {
+        smtpSender.result = Result.failure(RuntimeException("first failure"))
+        val id = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        repository.flushOutbox()
+
+        smtpSender.result = Result.failure(RuntimeException("second failure"))
+        val outcome = repository.retryOutboxItem(id)
+
+        assertTrue(outcome is SendOutcome.Failure)
+        assertEquals("second failure", (outcome as SendOutcome.Failure).reason)
+        assertEquals("second failure", outboxDao.items[id]?.errorMessage)
+    }
+
+    @Test
+    fun `discardOutboxItem removes the row, its attachment rows, and the attachment file itself`() = runTest {
+        smtpSender.result = Result.failure(RuntimeException("rejected"))
+        val id = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        // A real file — sendOutboxItem reads actual bytes off disk for each attachment, so a
+        // nonexistent path would fail with an unrelated FileNotFoundException instead of the
+        // scripted SMTP rejection this test is actually about.
+        val attachmentFile = java.io.File.createTempFile("photo", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        repository.attachFilesToOutbox(
+            id,
+            listOf(PickedAttachment(fileName = "photo.jpg", mimeType = "image/jpeg", sizeBytes = 3, localFilePath = attachmentFile.absolutePath)),
+        )
+        repository.flushOutbox()
+
+        repository.discardOutboxItem(id)
+
+        assertEquals(null, outboxDao.items[id])
+        assertTrue(outboxAttachmentDao.getForOutbox(id).isEmpty())
+        assertFalse(attachmentFile.exists())
+    }
+
+    @Test
     fun `emptyTrash expunges the resolved Trash folder on the server and clears the local cache`() = runTest {
         accountRepository.accounts[accountId] = accountRepository.accounts.getValue(accountId).copy(trashFolderFullName = "Trash")
         imapClient.foldersResult = Result.success(listOf(ImapFolderInfo("INBOX", "INBOX"), ImapFolderInfo("Trash", "Trash")))

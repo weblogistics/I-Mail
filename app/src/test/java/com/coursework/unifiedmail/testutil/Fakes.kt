@@ -454,8 +454,15 @@ class FakeOutboxDao : OutboxDao {
     override suspend fun getUnsent(): List<OutboxEntity> =
         items.values.filter { it.status != OutboxStatus.SENT }.sortedBy { it.createdAtEpochMillis }
 
+    override fun observeFailed(): Flow<List<OutboxEntity>> =
+        flowOf(items.values.filter { it.status == OutboxStatus.FAILED }.sortedByDescending { it.createdAtEpochMillis })
+
     override suspend fun updateStatus(id: String, status: OutboxStatus, errorMessage: String?) {
         items[id]?.let { items[id] = it.copy(status = status, errorMessage = errorMessage) }
+    }
+
+    override suspend fun delete(id: String) {
+        items.remove(id)
     }
 }
 
