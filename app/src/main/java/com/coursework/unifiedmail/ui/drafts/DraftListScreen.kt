@@ -165,10 +165,13 @@ private fun FailedOutboxRow(item: OutboxEntity, isRetrying: Boolean, onRetry: ()
         overlineContent = { Text("To: ${item.toAddresses}", maxLines = 1) },
         headlineContent = { Text(item.subject.ifBlank { "(no subject)" }, maxLines = 1) },
         supportingContent = {
+            // No maxLines cap — unlike a typical short failure reason, the Gmail/Outlook
+            // App Password hint (see MailErrorMessages.describeMailError) is multiple sentences
+            // long, and this is the one place a user actually needs to read the whole thing to
+            // fix it rather than just seeing "something went wrong."
             Text(
                 text = item.errorMessage ?: "Couldn't send",
                 color = MaterialTheme.colorScheme.error,
-                maxLines = 2,
             )
         },
         trailingContent = {
