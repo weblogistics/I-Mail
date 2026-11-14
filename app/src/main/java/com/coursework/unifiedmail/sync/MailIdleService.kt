@@ -119,7 +119,7 @@ class MailIdleService : Service() {
             var watchdog: Job? = null
             try {
                 val password = accountRepository.getPassword(account.id)
-                    ?: error("Missing saved credentials for ${account.displayName}")
+                    ?: throw MissingCredentialsException("Missing saved credentials for ${account.displayName}")
 
                 val session = Session.getInstance(MailSessionFactory.imapProperties(account.imapSecurity))
                 store = session.getStore(MailSessionFactory.imapProtocol(account.imapSecurity))
@@ -159,6 +159,14 @@ class MailIdleService : Service() {
                 // Must propagate, not be treated as a retry-able connection failure below — this
                 // is the service (or this one account) actually being told to stop.
                 throw e
+            } catch (e: MissingCredentialsException) {
+                // Unlike a transient network blip, retrying this on the usual (max 5-minute)
+                // backoff can never succeed until the user re-enters a password — it would just
+                // reconnect-fail every few minutes forever, burning battery for nothing. Still
+                // retries eventually, rather than giving up on this account for the rest of the
+                // service's lifetime, so fixing the account later is picked up on its own without
+                // requiring a full service restart.
+                delay(MISSING_CREDENTIALS_BACKOFF_MS)
             } catch (e: Exception) {
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
@@ -170,11 +178,15 @@ class MailIdleService : Service() {
         }
     }
 
+    /** Distinguishes a dead-end failure (see runIdleLoop's catch block) from an ordinary transient connection failure. */
+    private class MissingCredentialsException(message: String) : Exception(message)
+
     companion object {
         private const val FOREGROUND_NOTIFICATION_ID = 2001
         private const val IDLE_CYCLE_MS = 25 * 60 * 1000L
         private const val INITIAL_BACKOFF_MS = 5_000L
         private const val MAX_BACKOFF_MS = 5 * 60 * 1000L
+        private const val MISSING_CREDENTIALS_BACKOFF_MS = 60 * 60 * 1000L
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, MailIdleService::class.java))
