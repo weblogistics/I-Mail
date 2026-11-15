@@ -45,12 +45,24 @@ object ContactShortcuts {
      * to send anything first — see MailApplication.onCreate). Always best-effort: a failure here
      * (rate limiting, a device's shortcut-count cap, ...) should never be visible to the user,
      * just a share sheet one shortcut shorter than ideal.
+     *
+     * Adds the new set before removing anything stale, rather than clearing everything first —
+     * removeAllDynamicShortcuts() then addDynamicShortcuts() has a window where a process death
+     * (or any other interruption) between the two calls leaves the share sheet with zero Direct
+     * Share targets until the next successful refresh. Worst case here is a brief superset of
+     * old+new shortcuts, never zero.
      */
     suspend fun refresh(context: Context, mailRepository: MailRepository) {
         runCatching {
             val recent = mailRepository.getRecentContacts(MAX_SHORTCUTS)
-            ShortcutManagerCompat.removeAllDynamicShortcuts(context)
-            ShortcutManagerCompat.addDynamicShortcuts(context, recent.map { buildShortcut(context, it) })
+            val newShortcuts = recent.map { buildShortcut(context, it) }
+            val newIds = newShortcuts.map { it.id }.toSet()
+
+            ShortcutManagerCompat.addDynamicShortcuts(context, newShortcuts)
+            val staleIds = ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id }.filterNot { it in newIds }
+            if (staleIds.isNotEmpty()) {
+                ShortcutManagerCompat.removeDynamicShortcuts(context, staleIds)
+            }
         }
     }
 
