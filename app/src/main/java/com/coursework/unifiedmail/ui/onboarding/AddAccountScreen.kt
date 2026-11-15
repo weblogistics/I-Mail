@@ -60,6 +60,13 @@ fun AddAccountScreen(
     LaunchedEffect(state.savedAccountId) {
         if (state.savedAccountId != null) onAccountSaved()
     }
+    // A failed test is exactly when the user needs to see (and likely edit) the connection
+    // fields — leaving them collapsed here would mean the error message shows with no visible
+    // way to act on it, and the collapsed caption below would keep confidently claiming
+    // "filled in automatically" right next to an error saying otherwise.
+    LaunchedEffect(state.connectionStatus) {
+        if (state.connectionStatus == ConnectionCheckStatus.FAILED) manualSetupExpanded = true
+    }
 
     Scaffold(
         topBar = {
