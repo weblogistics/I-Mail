@@ -92,16 +92,15 @@ default send account, bulk move, outbox retry/discard, Add Account disclosure, a
       `folderSyncMutexes`) now serializes `sendOutboxItem` against `discardOutboxItem`, the
       attachment-bytes read is wrapped in `runCatching`, and the row's existence is re-checked
       once the lock is actually held. Tested (`MailRepositoryTest`) and pushed.
-- [ ] `ContactShortcuts.refresh`'s remove-then-add isn't atomic — a process death mid-refresh
-      briefly empties Direct Share targets until the next successful refresh. Self-healing;
-      minor.
+- [x] **`ContactShortcuts.refresh`'s remove-then-add wasn't atomic.** Fixed: now adds the new
+      shortcut set before removing anything stale — worst case on an interruption is a brief
+      superset of old+new, never zero. Pushed.
 - [ ] Direct Share shortcuts aren't per-account aware — tapping "Share to Jane" always uses the
       default account even if Jane was only ever emailed from a different one. Known
       simplification, not currently worth the complexity of tracking per-contact account history.
-- [ ] `MainActivity.kt` trusts `EXTRA_SHORTCUT_ID` from *any* incoming `ACTION_SEND` intent (not
-      just our own published shortcuts) to pre-fill the recipient — a malicious app could craft a
-      share intent that pre-fills an unexpected "To" address. Low impact (user still reviews
-      before sending) but worth a comment acknowledging it's untrusted input.
+- [x] **`EXTRA_SHORTCUT_ID` trust wasn't documented.** Fixed: added a comment at the one place
+      it's read (`MainActivity.kt`) explaining it's untrusted input and why that's acceptable here
+      (only ever pre-fills a fully editable, review-before-send field). Pushed.
 
 ## Deferred — worth revisiting only if it actually becomes a complaint
 
