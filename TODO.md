@@ -87,11 +87,11 @@ default send account, bulk move, outbox retry/discard, Add Account disclosure, a
 - [x] **Unified Inbox's disabled "Move to" icon gave no explanation.** Fixed: the icon is now
       always tappable; a mixed-account selection shows a Snackbar explaining why instead of just
       dimming with no feedback. Pushed.
-- [ ] A failed outbox attachment read can crash instead of failing gracefully, and there's a
-      narrow race between a background `flushOutbox()` and the user tapping Discard on the same
-      item (`MailRepository.kt`, `sendOutboxItem`'s `File(...).readBytes()` isn't inside the
-      `Result`/`runCatching` boundary the rest of that function uses). Low-probability but a real
-      uncaught-exception path.
+- [x] **A failed outbox attachment read could crash, and raced Discard against a background
+      flush.** Fixed: a per-outbox-item `Mutex` (evicted once the item is gone, same pattern as
+      `folderSyncMutexes`) now serializes `sendOutboxItem` against `discardOutboxItem`, the
+      attachment-bytes read is wrapped in `runCatching`, and the row's existence is re-checked
+      once the lock is actually held. Tested (`MailRepositoryTest`) and pushed.
 - [ ] `ContactShortcuts.refresh`'s remove-then-add isn't atomic — a process death mid-refresh
       briefly empties Direct Share targets until the next successful refresh. Self-healing;
       minor.
