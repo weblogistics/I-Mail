@@ -141,6 +141,16 @@ class MailRepository @Inject constructor(
 
     private fun mutexFor(folderId: String): Mutex = folderSyncMutexes.computeIfAbsent(folderId) { Mutex() }
 
+    // Serializes sendOutboxItem/discardOutboxItem per outbox item id: a periodic/worker-triggered
+    // flushOutbox() and the user tapping Discard on that same failed item from DraftListScreen can
+    // otherwise both act on it at once — the attachment-bytes read in sendOutboxItem has no other
+    // guard, so a Discard landing mid-read throws FileNotFoundException on a file that's just been
+    // deleted out from under it. Evicted once the item is actually gone (sent or discarded) so
+    // this doesn't grow unbounded the same way folderSyncMutexes once did.
+    private val outboxItemMutexes = ConcurrentHashMap<String, Mutex>()
+
+    private fun outboxMutexFor(outboxId: String): Mutex = outboxItemMutexes.computeIfAbsent(outboxId) { Mutex() }
+
     // setMessageRead/setMessageFlagged push to the server in the background (see their own
     // comments) so a toggle never stalls on a network round trip — but that means a failure there
     // used to just vanish with the user none the wiser that the server never found out. Buffer of
@@ -902,21 +912,27 @@ class MailRepository @Inject constructor(
     }
 
     /** Discards a failed outbox item for good — otherwise [flushOutbox] would keep retrying something the user has already given up on indefinitely. */
-    suspend fun discardOutboxItem(outboxId: String) {
+    suspend fun discardOutboxItem(outboxId: String) = outboxMutexFor(outboxId).withLock {
         deleteOutboxAttachmentFiles(outboxId, outboxAttachmentDao.getForOutbox(outboxId))
         outboxDao.delete(outboxId)
+        outboxItemMutexes.remove(outboxId)
     }
 
-    private suspend fun sendOutboxItem(item: OutboxEntity): SendOutcome {
+    private suspend fun sendOutboxItem(item: OutboxEntity): SendOutcome = outboxMutexFor(item.id).withLock {
+        // A caller already holding this same (not-yet-evicted) Mutex instance when discardOutboxItem
+        // deletes the row can still be granted the lock afterward — re-checking here, now that the
+        // lock is actually held, is what actually closes that window rather than just narrowing it.
+        if (outboxDao.getById(item.id) == null) return@withLock SendOutcome.Failure("Message no longer exists")
+
         val account = accountRepository.getAccount(item.accountId)
         if (account == null) {
             outboxDao.updateStatus(item.id, OutboxStatus.FAILED, "Account not found")
-            return SendOutcome.Failure("Account not found")
+            return@withLock SendOutcome.Failure("Account not found")
         }
         val password = accountRepository.getPassword(item.accountId)
         if (password == null) {
             outboxDao.updateStatus(item.id, OutboxStatus.FAILED, "Missing saved credentials")
-            return SendOutcome.Failure("Missing saved credentials")
+            return@withLock SendOutcome.Failure("Missing saved credentials")
         }
 
         val smtpConfig = SmtpConfig(
@@ -927,30 +943,42 @@ class MailRepository @Inject constructor(
             password = password,
         )
         val outboxAttachments = outboxAttachmentDao.getForOutbox(item.id)
-        val outgoing = OutgoingMessage(
-            fromAddress = account.emailAddress,
-            fromPersonal = account.displayName,
-            to = item.toAddresses.splitAddresses(),
-            cc = item.ccAddresses?.splitAddresses() ?: emptyList(),
-            bcc = item.bccAddresses?.splitAddresses() ?: emptyList(),
-            subject = item.subject,
-            body = item.body,
-            bodyHtml = item.bodyHtml,
-            inReplyTo = item.inReplyToMessageIdHeader,
-            references = item.referencesHeader,
-            attachments = outboxAttachments.map { attachment ->
-                OutgoingAttachment(
-                    fileName = attachment.fileName,
-                    mimeType = attachment.mimeType,
-                    bytes = File(attachment.localFilePath).readBytes(),
-                )
-            },
-        )
+        // Reading attachment bytes off disk can fail for the same reasons SmtpSender.send can —
+        // most commonly here, discardOutboxItem deleting the file (guarded against by the mutex
+        // above for THIS item, but an admin/storage tool, or any other I/O hiccup, isn't) — so
+        // this needs the same Result-wrapped handling as the actual send, not an uncaught
+        // exception escaping into whatever called flushOutbox.
+        val outgoing = runCatching {
+            OutgoingMessage(
+                fromAddress = account.emailAddress,
+                fromPersonal = account.displayName,
+                to = item.toAddresses.splitAddresses(),
+                cc = item.ccAddresses?.splitAddresses() ?: emptyList(),
+                bcc = item.bccAddresses?.splitAddresses() ?: emptyList(),
+                subject = item.subject,
+                body = item.body,
+                bodyHtml = item.bodyHtml,
+                inReplyTo = item.inReplyToMessageIdHeader,
+                references = item.referencesHeader,
+                attachments = outboxAttachments.map { attachment ->
+                    OutgoingAttachment(
+                        fileName = attachment.fileName,
+                        mimeType = attachment.mimeType,
+                        bytes = File(attachment.localFilePath).readBytes(),
+                    )
+                },
+            )
+        }.getOrElse {
+            val reason = describeMailError(it, smtpConfig.host)
+            outboxDao.updateStatus(item.id, OutboxStatus.FAILED, reason)
+            return@withLock SendOutcome.Failure(reason)
+        }
 
         val result = smtpSender.send(smtpConfig, outgoing)
-        return if (result.isSuccess) {
+        if (result.isSuccess) {
             outboxDao.updateStatus(item.id, OutboxStatus.SENT, null)
             deleteOutboxAttachmentFiles(item.id, outboxAttachments)
+            outboxItemMutexes.remove(item.id)
             SendOutcome.Success
         } else {
             val reason = describeMailError(result.exceptionOrNull() ?: Throwable("Could not send message"), smtpConfig.host)

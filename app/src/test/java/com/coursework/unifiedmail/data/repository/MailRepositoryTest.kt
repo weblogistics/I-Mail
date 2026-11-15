@@ -536,6 +536,42 @@ class MailRepositoryTest {
     }
 
     @Test
+    fun `flushOutbox fails gracefully instead of crashing when an attachment file is missing`() = runTest {
+        val id = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        // Simulates discardOutboxItem (or any other I/O hiccup) having removed the file out from
+        // under a send attempt — reading it used to be an uncaught FileNotFoundException escaping
+        // flushOutbox entirely, rather than a graceful SendOutcome.Failure like every other
+        // failure in this function.
+        repository.attachFilesToOutbox(
+            id,
+            listOf(PickedAttachment(fileName = "gone.jpg", mimeType = "image/jpeg", sizeBytes = 3, localFilePath = "/does/not/exist/gone.jpg")),
+        )
+
+        val allSucceeded = repository.flushOutbox()
+
+        assertFalse(allSucceeded)
+        assertEquals(OutboxStatus.FAILED, outboxDao.items[id]?.status)
+        assertTrue(outboxDao.items[id]?.errorMessage?.isNotBlank() == true)
+    }
+
+    @Test
+    fun `retrying an already-discarded outbox item fails cleanly instead of resurrecting it`() = runTest {
+        val id = repository.queueMessageForSending(
+            accountId,
+            ComposeDraft(to = listOf("a@example.com"), subject = "A", body = "Body"),
+        )
+        repository.discardOutboxItem(id)
+
+        val outcome = repository.retryOutboxItem(id)
+
+        assertTrue(outcome is SendOutcome.Failure)
+        assertEquals(null, outboxDao.items[id])
+    }
+
+    @Test
     fun `emptyTrash expunges the resolved Trash folder on the server and clears the local cache`() = runTest {
         accountRepository.accounts[accountId] = accountRepository.accounts.getValue(accountId).copy(trashFolderFullName = "Trash")
         imapClient.foldersResult = Result.success(listOf(ImapFolderInfo("INBOX", "INBOX"), ImapFolderInfo("Trash", "Trash")))
