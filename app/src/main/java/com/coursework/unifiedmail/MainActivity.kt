@@ -60,6 +60,13 @@ class MainActivity : ComponentActivity() {
         // Set only when that share was aimed at a specific direct-share "recent people" target
         // (see ContactShortcuts) — the system redelivers the sharing intent with this extra set
         // instead of launching whatever dummy Intent the shortcut itself was built with.
+        //
+        // EXTRA_SHORTCUT_ID is untrusted input: Android doesn't restrict it to shortcuts this app
+        // actually published, so another app could craft an ACTION_SEND intent carrying an
+        // arbitrary "share_contact:" id to pre-fill an unexpected "To" address. Low impact in
+        // practice — the compose screen still shows that address for the user to see and change
+        // before anything is sent — but deliberately not trusted for anything higher-stakes than
+        // a prefilled, fully editable, review-before-send text field.
         val shareRecipientAddress = ContactShortcuts.addressFromShortcutId(intent?.getStringExtra(Intent.EXTRA_SHORTCUT_ID))
         // Same tradeoff as MailApplication.onCreate: a single fast local DataStore read at
         // startup, blocked on briefly here since there's no reasonable async alternative for
