@@ -81,10 +81,9 @@ default send account, bulk move, outbox retry/discard, Add Account disclosure, a
       from every screen the drawer opens from. Pushed. Not done: no push notification, and the
       per-account Inbox screen has no drawer/Drafts entry point at all, so this badge isn't
       visible from there.
-- [ ] A connection-test failure on Add Account doesn't react at all — the error shows, but
-      "Manual setup" stays collapsed and its caption still confidently says "filled in
-      automatically" even right after a failure. Should auto-expand (or change its caption) when
-      `connectionStatus == FAILED`.
+- [x] **A connection-test failure on Add Account didn't react at all.** Fixed: "Manual setup"
+      now auto-expands the moment `connectionStatus` becomes `FAILED`, so the fields are visible
+      right where the error is. Pushed.
 - [x] **Unified Inbox's disabled "Move to" icon gave no explanation.** Fixed: the icon is now
       always tappable; a mixed-account selection shows a Snackbar explaining why instead of just
       dimming with no feedback. Pushed.
