@@ -389,6 +389,17 @@ fun MessageDetailScreen(
             // scroll container with the header.
             Column(modifier = Modifier.padding(padding).fillMaxSize()) {
                 Column(modifier = Modifier.padding(Spacing.md)) {
+                    // The subject previously only ever appeared in the TopAppBar title, squeezed
+                    // to one line next to the back button and whatever action icons are also
+                    // showing (flag, prev/next, overflow) — easily truncated to the point of
+                    // being unreadable. A real headline here, free to wrap, matches
+                    // Gmail/Outlook/Samsung Mail's own message view.
+                    Text(
+                        text = current.subject?.takeIf { it.isNotBlank() } ?: "(no subject)",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = Spacing.sm),
+                    )
                     moveError?.let { message ->
                         Text(text = message, color = MaterialTheme.colorScheme.error)
                     }
