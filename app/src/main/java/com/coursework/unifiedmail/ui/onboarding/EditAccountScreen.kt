@@ -59,6 +59,7 @@ fun EditAccountScreen(
     var showTrashDialog by remember { mutableStateOf(false) }
     var showArchiveDialog by remember { mutableStateOf(false) }
     var showSpamDialog by remember { mutableStateOf(false) }
+    var showSentDialog by remember { mutableStateOf(false) }
     var showEmptyTrashConfirmation by remember { mutableStateOf(false) }
 
     if (showTrashDialog) {
@@ -108,6 +109,19 @@ fun EditAccountScreen(
             onSelect = {
                 viewModel.onSpamFolderChange(it)
                 showSpamDialog = false
+            },
+        )
+    }
+    if (showSentDialog) {
+        RadioOptionDialog(
+            title = "Sent folder",
+            options = listOf(null) + state.folders.map { it.fullName },
+            selected = state.sentFolderFullName,
+            labelFor = { fullName -> state.folders.firstOrNull { it.fullName == fullName }?.displayName ?: "Auto-detect" },
+            onDismiss = { showSentDialog = false },
+            onSelect = {
+                viewModel.onSentFolderChange(it)
+                showSentDialog = false
             },
         )
     }
@@ -231,6 +245,15 @@ fun EditAccountScreen(
             }
 
             SectionLabel("Mail organization")
+            ListItem(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = { showSentDialog = true }),
+                headlineContent = { Text("Sent folder") },
+                supportingContent = {
+                    Text(state.folders.firstOrNull { it.fullName == state.sentFolderFullName }?.displayName ?: "Auto-detect")
+                },
+            )
             ListItem(
                 modifier = Modifier
                     .fillMaxWidth()

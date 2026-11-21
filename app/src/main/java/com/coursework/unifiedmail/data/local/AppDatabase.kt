@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class, FolderEntity::class, MessageEntity::class, OutboxEntity::class,
         AttachmentEntity::class, OutboxAttachmentEntity::class, DraftEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -29,6 +29,13 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_messages_folderName` ON `messages` (`folderName`)")
+            }
+        }
+
+        /** Adds an explicit per-account Sent folder override, matching trash/archive/spam's existing pattern — see AccountEntity.sentFolderFullName. */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN sentFolderFullName TEXT")
             }
         }
     }

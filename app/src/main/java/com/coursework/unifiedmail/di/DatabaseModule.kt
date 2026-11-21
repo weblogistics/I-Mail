@@ -28,7 +28,7 @@ object DatabaseModule {
             // The app is now installed with real accounts, so schema changes from version 14 on
             // need a real Migration — a destructive fallback would also wipe the accounts table.
             // The fallback stays only for pre-14 development builds, which never held real data.
-            .addMigrations(AppDatabase.MIGRATION_14_15)
+            .addMigrations(AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16)
             .fallbackToDestructiveMigrationFrom(*(1..13).toList().toIntArray())
             .build()
 

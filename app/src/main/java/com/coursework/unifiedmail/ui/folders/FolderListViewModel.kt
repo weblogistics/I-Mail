@@ -3,7 +3,9 @@ package com.coursework.unifiedmail.ui.folders
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.coursework.unifiedmail.data.local.AccountEntity
 import com.coursework.unifiedmail.data.local.FolderEntity
+import com.coursework.unifiedmail.data.repository.AccountRepository
 import com.coursework.unifiedmail.data.repository.MailRepository
 import com.coursework.unifiedmail.data.repository.SyncOutcome
 import com.coursework.unifiedmail.domain.folders.FolderTree
@@ -23,11 +25,14 @@ import javax.inject.Inject
 class FolderListViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val mailRepository: MailRepository,
+    private val accountRepository: AccountRepository,
 ) : ViewModel() {
 
     val accountId: String = checkNotNull(savedStateHandle["accountId"])
 
     private val _folders = MutableStateFlow<List<FolderEntity>>(emptyList())
+
+    private val _account = MutableStateFlow<AccountEntity?>(null)
 
     // Empty by default — the tree starts fully expanded, same as most mail apps' folder pickers.
     private val _collapsedFolderFullNames = MutableStateFlow<Set<String>>(emptySet())
@@ -35,6 +40,16 @@ class FolderListViewModel @Inject constructor(
     /** Depth-first, respecting collapse state — ready for the LazyColumn to render directly. */
     val visibleFolders: StateFlow<List<FolderTreeNode>> = combine(_folders, _collapsedFolderFullNames) { folders, collapsed ->
         FolderTree.flattenVisible(FolderTree.build(folders), collapsed)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Inbox/Sent/Drafts/Outbox plus this account's Trash/Archive/Spam — the same shortcut set the
+     * drawer surfaces for an expanded account (see AppDrawerContent), shown here as its own
+     * section above the full tree rather than leaving the user to find them wherever they happen
+     * to fall alphabetically.
+     */
+    val commonFolders: StateFlow<List<FolderEntity>> = combine(_folders, _account) { folders, account ->
+        FolderTree.commonFolders(folders, account?.trashFolderFullName, account?.archiveFolderFullName, account?.spamFolderFullName, account?.sentFolderFullName)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val collapsedFolderFullNames: StateFlow<Set<String>> = _collapsedFolderFullNames.asStateFlow()
@@ -46,6 +61,7 @@ class FolderListViewModel @Inject constructor(
     val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
+        viewModelScope.launch { _account.value = accountRepository.getAccount(accountId) }
         refresh()
     }
 

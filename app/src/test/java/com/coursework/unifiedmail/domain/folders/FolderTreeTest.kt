@@ -127,6 +127,18 @@ class FolderTreeTest {
     }
 
     @Test
+    fun `commonFolders prefers the account's configured Sent folder over the name heuristic`() {
+        // Two folders both look like "Sent" — without an explicit override, the heuristic would
+        // win on whichever happens to come first; the account's own Settings choice must win
+        // regardless of list order, same as trash/archive/spam already do.
+        val folders = listOf(folder("INBOX"), folder("Sent Items"), folder("Sent"))
+
+        val common = FolderTree.commonFolders(folders, sentFolderFullName = "Sent Items")
+
+        assertEquals(listOf("INBOX", "Sent Items"), common.map { it.fullName })
+    }
+
+    @Test
     fun `resolveSpecialFolders returns nothing for kinds with no configured folder and no name match`() {
         val folders = listOf(folder("Work"))
 

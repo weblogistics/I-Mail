@@ -30,6 +30,7 @@ data class AccountEntity(
     val trashFolderFullName: String? = null,
     val archiveFolderFullName: String? = null,
     val spamFolderFullName: String? = null,
+    val sentFolderFullName: String? = null,
     val signature: String? = null,
     val createdAtEpochMillis: Long,
 )

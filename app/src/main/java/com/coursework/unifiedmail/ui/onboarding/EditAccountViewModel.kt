@@ -41,6 +41,7 @@ data class EditAccountUiState(
     val trashFolderFullName: String? = null,
     val archiveFolderFullName: String? = null,
     val spamFolderFullName: String? = null,
+    val sentFolderFullName: String? = null,
     val signature: String = "",
     val connectionStatus: ConnectionCheckStatus = ConnectionCheckStatus.IDLE,
     val connectionMessage: String? = null,
@@ -108,6 +109,7 @@ class EditAccountViewModel @Inject constructor(
                         trashFolderFullName = account.trashFolderFullName,
                         archiveFolderFullName = account.archiveFolderFullName,
                         spamFolderFullName = account.spamFolderFullName,
+                        sentFolderFullName = account.sentFolderFullName,
                         signature = account.signature.orEmpty(),
                     )
                 }
@@ -134,6 +136,7 @@ class EditAccountViewModel @Inject constructor(
     fun onTrashFolderChange(fullName: String?) = _uiState.update { it.copy(trashFolderFullName = fullName) }
     fun onArchiveFolderChange(fullName: String?) = _uiState.update { it.copy(archiveFolderFullName = fullName) }
     fun onSpamFolderChange(fullName: String?) = _uiState.update { it.copy(spamFolderFullName = fullName) }
+    fun onSentFolderChange(fullName: String?) = _uiState.update { it.copy(sentFolderFullName = fullName) }
     fun onSignatureChange(value: String) = _uiState.update { it.copy(signature = value) }
 
     fun requestDelete() = _uiState.update { it.copy(showDeleteConfirmation = true) }
@@ -212,6 +215,7 @@ class EditAccountViewModel @Inject constructor(
                 trashFolderFullName = state.trashFolderFullName,
                 archiveFolderFullName = state.archiveFolderFullName,
                 spamFolderFullName = state.spamFolderFullName,
+                sentFolderFullName = state.sentFolderFullName,
                 signature = state.signature.takeIf { it.isNotBlank() },
             )
             accountRepository.updateAccount(updated, newPassword = state.password.takeIf { it.isNotBlank() })

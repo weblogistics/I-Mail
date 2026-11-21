@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -43,6 +44,7 @@ fun FolderListScreen(
     viewModel: FolderListViewModel = hiltViewModel(),
 ) {
     val visibleFolders by viewModel.visibleFolders.collectAsState()
+    val commonFolders by viewModel.commonFolders.collectAsState()
     val collapsedFolderFullNames by viewModel.collapsedFolderFullNames.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -81,6 +83,23 @@ fun FolderListScreen(
                 EmptyState(icon = Icons.Filled.Folder, message = "No folders", modifier = Modifier.fillMaxSize())
             } else {
                 LazyColumn {
+                    // Inbox/Sent/Drafts/Outbox/Trash/Archive/Spam as shortcuts, same set the
+                    // drawer surfaces for an expanded account — otherwise easy to lose track of
+                    // wherever they happen to fall alphabetically in the full tree below.
+                    // Deliberately duplicated there too: filtering them back out of the full tree
+                    // would orphan their subfolders (a server's Trash/Archive is routinely a
+                    // parent of its own children).
+                    if (commonFolders.isNotEmpty()) {
+                        items(commonFolders, key = { "common_${it.id}" }) { folder ->
+                            FolderTreeRow(
+                                node = FolderTreeNode(folder, emptyList(), depth = 0),
+                                isExpanded = false,
+                                onClick = { onFolderClick(MailRepository.localFolderKey(folder.fullName)) },
+                                onToggleExpanded = {},
+                            )
+                        }
+                        item { HorizontalDivider() }
+                    }
                     items(visibleFolders, key = { it.folder.id }) { node ->
                         FolderTreeRow(
                             node = node,

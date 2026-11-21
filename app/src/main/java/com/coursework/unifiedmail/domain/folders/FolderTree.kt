@@ -52,17 +52,20 @@ object FolderTree {
      * (the same set [defaultFolderRank] ranks first) followed by the account's
      * Trash/Archive/Spam as [resolveSpecialFolders] resolves them. At most one folder per kind
      * for the same reason resolveSpecialFolders is careful about it — a bare "name contains
-     * sent" match over every folder can hit several lookalikes.
+     * sent" match over every folder can hit several lookalikes. [sentFolderFullName] is an
+     * explicit override (an account's own Settings choice, same as the other three) that wins
+     * over the "contains sent" heuristic when set.
      */
     fun commonFolders(
         folders: List<FolderEntity>,
         trashFolderFullName: String? = null,
         archiveFolderFullName: String? = null,
         spamFolderFullName: String? = null,
+        sentFolderFullName: String? = null,
     ): List<FolderEntity> {
         val defaults = listOfNotNull(
             folders.firstOrNull { it.fullName.equals("INBOX", ignoreCase = true) },
-            folders.firstOrNull { it.displayName.contains("sent", ignoreCase = true) },
+            resolveFolder(folders, sentFolderFullName) { it.displayName.contains("sent", ignoreCase = true) },
             folders.firstOrNull { it.displayName.contains("draft", ignoreCase = true) },
             folders.firstOrNull { it.displayName.contains("outbox", ignoreCase = true) },
         )
@@ -91,15 +94,14 @@ object FolderTree {
         trashFolderFullName: String?,
         archiveFolderFullName: String?,
         spamFolderFullName: String?,
-    ): List<FolderEntity> {
-        fun resolve(configured: String?, heuristic: (FolderEntity) -> Boolean): FolderEntity? =
-            configured?.let { name -> folders.firstOrNull { it.fullName == name } }
-                ?: folders.firstOrNull(heuristic)
+    ): List<FolderEntity> = listOfNotNull(
+        resolveFolder(folders, trashFolderFullName) { it.fullName.contains("trash", ignoreCase = true) || it.fullName.contains("deleted", ignoreCase = true) },
+        resolveFolder(folders, archiveFolderFullName) { it.fullName.contains("archive", ignoreCase = true) },
+        resolveFolder(folders, spamFolderFullName) { it.fullName.contains("spam", ignoreCase = true) || it.fullName.contains("junk", ignoreCase = true) },
+    ).distinctBy { it.id }
 
-        return listOfNotNull(
-            resolve(trashFolderFullName) { it.fullName.contains("trash", ignoreCase = true) || it.fullName.contains("deleted", ignoreCase = true) },
-            resolve(archiveFolderFullName) { it.fullName.contains("archive", ignoreCase = true) },
-            resolve(spamFolderFullName) { it.fullName.contains("spam", ignoreCase = true) || it.fullName.contains("junk", ignoreCase = true) },
-        ).distinctBy { it.id }
-    }
+    /** Shared by [commonFolders] and [resolveSpecialFolders]: an explicit Settings choice always wins; null falls back to the name-based heuristic. */
+    private fun resolveFolder(folders: List<FolderEntity>, configured: String?, heuristic: (FolderEntity) -> Boolean): FolderEntity? =
+        configured?.let { name -> folders.firstOrNull { it.fullName == name } }
+            ?: folders.firstOrNull(heuristic)
 }

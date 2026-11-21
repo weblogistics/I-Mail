@@ -154,6 +154,7 @@ fun AppDrawerContent(
                                 account.trashFolderFullName,
                                 account.archiveFolderFullName,
                                 account.spamFolderFullName,
+                                account.sentFolderFullName,
                             )
                             val commonIds = common.map { it.id }.toSet()
                             // Anything already sitting in the shortcuts above would just be a
