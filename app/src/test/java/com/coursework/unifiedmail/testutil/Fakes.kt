@@ -94,6 +94,10 @@ class FakeImapClient : ImapClient {
     var lastSeenFlagRequested: Triple<String, Long, Boolean>? = null
     var lastFlaggedFlagRequested: Triple<String, Long, Boolean>? = null
     var lastSearchRequested: Pair<String, String>? = null
+    // Lets a test pause setSeenFlag mid-call to deterministically force a second, newer
+    // setMessageRead call to queue up behind the first one's push — see MailRepositoryTest's race
+    // regression test for setMessageRead/setMessageFlagged's background push serialization.
+    var setSeenFlagHook: (suspend () -> Unit)? = null
 
     override suspend fun fetchFolders(config: ImapConfig): Result<List<ImapFolderInfo>> = foldersResult
 
@@ -127,6 +131,7 @@ class FakeImapClient : ImapClient {
         seen: Boolean,
     ): Result<Unit> {
         lastSeenFlagRequested = Triple(folderFullName, uid, seen)
+        setSeenFlagHook?.invoke()
         return setSeenFlagResult
     }
 

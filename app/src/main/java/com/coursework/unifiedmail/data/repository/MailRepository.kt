@@ -151,6 +151,44 @@ class MailRepository @Inject constructor(
 
     private fun outboxMutexFor(outboxId: String): Mutex = outboxItemMutexes.computeIfAbsent(outboxId) { Mutex() }
 
+    // Serializes setMessageRead/setMessageFlagged's background Seen/Flagged pushes per (message,
+    // kind) — without this, opening a message (which marks it read) racing a swipe-to-unread on
+    // that same still-visible row moments later fired two independent, unordered network pushes
+    // for the same flag, with no guarantee the one reflecting the user's actual latest intent was
+    // the one that landed on the server last. A later sync's upsertAll then trusted whatever the
+    // server ended up with, silently reverting the "wrong" local change with no indication
+    // anything went wrong — reported as "swipe-to-unread doesn't work, but only for the message
+    // that's currently open." Keyed by kind too (a message's Seen and Flagged pushes are
+    // independent and shouldn't block each other).
+    private val messageFlagPushMutexes = ConcurrentHashMap<String, Mutex>()
+
+    // The value most recently requested for a given mutex key — checked once a queued push's turn
+    // actually comes up, so a push already superseded by a newer call while it was waiting skips
+    // its now-pointless network round trip instead of still sending a stale value.
+    private val latestIntendedFlagState = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * Runs [push] for [value], serialized against any other in-flight push sharing [key] — see
+     * [messageFlagPushMutexes]'s doc for why. Fire-and-forget, same contract as the two callers'
+     * own doc comments: local state is already authoritative by the time this is called, so a
+     * failure here (reported via [onFailure]) doesn't block or undo anything.
+     */
+    private fun pushFlagSerialized(key: String, value: Boolean, onFailure: (Throwable) -> Unit, push: suspend () -> Unit) {
+        latestIntendedFlagState[key] = value
+        repositoryScope.launch {
+            messageFlagPushMutexes.computeIfAbsent(key) { Mutex() }.withLock {
+                if (latestIntendedFlagState[key] != value) return@withLock
+                runCatching { push() }.onFailure(onFailure)
+                // Safe to evict only if nothing newer queued up while the push above was running —
+                // re-checked after, not just before, since a competing call could start mid-flight.
+                if (latestIntendedFlagState[key] == value) {
+                    latestIntendedFlagState.remove(key)
+                    messageFlagPushMutexes.remove(key)
+                }
+            }
+        }
+    }
+
     // setMessageRead/setMessageFlagged push to the server in the background (see their own
     // comments) so a toggle never stalls on a network round trip — but that means a failure there
     // used to just vanish with the user none the wiser that the server never found out. Buffer of
@@ -302,17 +340,21 @@ class MailRepository @Inject constructor(
         }
 
     suspend fun setMessageRead(accountId: String, folderKey: String, uid: Long, isRead: Boolean) {
-        messageDao.markRead(messageId(accountId, folderKey, uid), isRead)
+        val id = messageId(accountId, folderKey, uid)
+        messageDao.markRead(id, isRead)
         // Local state is authoritative for the UI immediately; the server push happens in the
         // background so a toggle-read tap or opening a message doesn't stall on a network round
         // trip. Best-effort: no retry queue exists yet, so a failure here (offline, server
         // rejects the flag change, ...) doesn't undo the local change or block anything — but it
         // is surfaced via backgroundSyncErrors (see its doc) so the user at least knows the
         // server never found out, rather than the two silently drifting apart with no indication.
-        repositoryScope.launch {
-            runCatching { pushSeenFlag(accountId, folderKey, uid, isRead) }
-                .onFailure { _backgroundSyncErrors.tryEmit("Couldn't update read status on the server — ${describeMailError(it)}") }
-        }
+        // Serialized per message (see pushFlagSerialized/messageFlagPushMutexes) against a
+        // competing push for the same Seen flag.
+        pushFlagSerialized(
+            key = "seen:$id",
+            value = isRead,
+            onFailure = { _backgroundSyncErrors.tryEmit("Couldn't update read status on the server — ${describeMailError(it)}") },
+        ) { pushSeenFlag(accountId, folderKey, uid, isRead) }
     }
 
     /** Marks a message as replied-to, locally and (best-effort) on the server — called after a reply successfully sends. */
@@ -344,12 +386,15 @@ class MailRepository @Inject constructor(
     }
 
     suspend fun setMessageFlagged(accountId: String, folderKey: String, uid: Long, isFlagged: Boolean) {
-        messageDao.markFlagged(messageId(accountId, folderKey, uid), isFlagged)
-        // Same best-effort background push as setMessageRead — see its comment.
-        repositoryScope.launch {
-            runCatching { pushFlaggedFlag(accountId, folderKey, uid, isFlagged) }
-                .onFailure { _backgroundSyncErrors.tryEmit("Couldn't flag/unflag on the server — ${describeMailError(it)}") }
-        }
+        val id = messageId(accountId, folderKey, uid)
+        messageDao.markFlagged(id, isFlagged)
+        // Same best-effort background push as setMessageRead — see its comment — serialized
+        // against a competing push for the same Flagged flag.
+        pushFlagSerialized(
+            key = "flagged:$id",
+            value = isFlagged,
+            onFailure = { _backgroundSyncErrors.tryEmit("Couldn't flag/unflag on the server — ${describeMailError(it)}") },
+        ) { pushFlaggedFlag(accountId, folderKey, uid, isFlagged) }
     }
 
     private suspend fun pushFlaggedFlag(accountId: String, folderKey: String, uid: Long, isFlagged: Boolean) {
@@ -686,17 +731,20 @@ class MailRepository @Inject constructor(
     }
 
     /**
-     * Same name-guessing idea as [findTrashFolderKey]/[findArchiveFolderKey]/[findSpamFolderKey] —
-     * there's no dedicated per-account "Sent folder" setting (unlike those three, see
-     * AccountEntity), so this always falls back to the single best name match. Used only to build
-     * the compose screen's address autocomplete (see [getAutocompleteContacts]), not for any
-     * move/trash-style operation, so a missing/misnamed Sent folder just means an empty
-     * suggestion list rather than a failed action.
+     * Same idea as [findTrashFolderKey]/[findArchiveFolderKey]/[findSpamFolderKey] — the
+     * account's own explicit Settings choice (AccountEntity.sentFolderFullName) always wins; a
+     * kind left at "auto-detect" (null) falls back to the single best name match. Used to build
+     * the compose screen's address autocomplete (see [getAutocompleteContacts]) and the Folders
+     * screen's "special folders" shortcut section, not for any move/trash-style operation, so a
+     * missing/misnamed Sent folder just means an empty suggestion list rather than a failed action.
      */
-    private suspend fun findSentFolderKey(accountId: String): String? =
-        folderDao.getForAccount(accountId)
+    suspend fun findSentFolderKey(accountId: String): String? {
+        val configured = accountRepository.getAccount(accountId)?.sentFolderFullName
+        if (configured != null) return localFolderKey(configured)
+        return folderDao.getForAccount(accountId)
             .firstOrNull { it.fullName.contains("sent", ignoreCase = true) }
             ?.let { localFolderKey(it.fullName) }
+    }
 
     /**
      * Best-effort refresh of every active account's Sent folder, purely so [getAutocompleteContacts]

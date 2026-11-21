@@ -23,6 +23,7 @@ import com.coursework.unifiedmail.testutil.FakeMessageDao
 import com.coursework.unifiedmail.testutil.FakeOutboxAttachmentDao
 import com.coursework.unifiedmail.testutil.FakeOutboxDao
 import com.coursework.unifiedmail.testutil.FakeSmtpSender
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -341,6 +342,38 @@ class MailRepositoryTest {
     }
 
     @Test
+    fun `a newer setMessageRead intent wins on the server even if the older push's network call is still in flight`() = runTest {
+        // Reproduces the reported bug: opening a message marks it read (push A, isRead=true);
+        // swiping that same still-visible row to mark it unread moments later used to fire an
+        // independent, unordered push B (isRead=false) racing it — whichever happened to land on
+        // the server last won, regardless of which reflected the user's actual latest intent.
+        messageDao.messages.add(fakeMessageEntity(1))
+        folderDao.folders["$accountId|INBOX"] = FolderEntity(id = "$accountId|INBOX", accountId = accountId, fullName = "INBOX", displayName = "INBOX")
+        val pushAStarted = CompletableDeferred<Unit>()
+        val releasePushA = CompletableDeferred<Unit>()
+        imapClient.setSeenFlagHook = {
+            if (!pushAStarted.isCompleted) {
+                pushAStarted.complete(Unit)
+                releasePushA.await()
+            }
+        }
+
+        // Push A starts and immediately blocks inside the hook above, mid-network-call.
+        repository.setMessageRead(accountId, MailRepository.INBOX_FOLDER_KEY, 1, isRead = true)
+        pushAStarted.await()
+        // Push B's background launch is serialized behind A's still-held per-message mutex —
+        // it queues rather than racing A's in-flight call.
+        repository.setMessageRead(accountId, MailRepository.INBOX_FOLDER_KEY, 1, isRead = false)
+
+        // Let A's "slow" network call finally complete — it now finds itself superseded and
+        // skips re-asserting isRead=true, then B runs and pushes the real latest intent.
+        releasePushA.complete(Unit)
+
+        assertFalse(messageDao.messages.first { it.uid == 1L }.isRead)
+        assertEquals(Triple("INBOX", 1L, false), imapClient.lastSeenFlagRequested)
+    }
+
+    @Test
     fun `setMessageRead surfaces a server push failure via backgroundSyncErrors instead of staying silent`() = runTest {
         messageDao.messages.add(fakeMessageEntity(1))
         folderDao.folders["$accountId|INBOX"] = FolderEntity(id = "$accountId|INBOX", accountId = accountId, fullName = "INBOX", displayName = "INBOX")
@@ -632,6 +665,20 @@ class MailRepositoryTest {
     fun `findSpamFolderKey falls back to a name heuristic when nothing is configured`() = runTest {
         folderDao.folders["$accountId|Junk"] = FolderEntity(id = "$accountId|Junk", accountId = accountId, fullName = "Junk", displayName = "Junk")
         assertEquals("Junk", repository.findSpamFolderKey(accountId))
+    }
+
+    @Test
+    fun `findSentFolderKey prefers the configured folder over the name heuristic`() = runTest {
+        accountRepository.accounts[accountId] = accountRepository.accounts.getValue(accountId).copy(sentFolderFullName = "Sent Items")
+        folderDao.folders["$accountId|Sent"] = FolderEntity(id = "$accountId|Sent", accountId = accountId, fullName = "Sent", displayName = "Sent")
+
+        assertEquals("Sent Items", repository.findSentFolderKey(accountId))
+    }
+
+    @Test
+    fun `findSentFolderKey falls back to a name heuristic when nothing is configured`() = runTest {
+        folderDao.folders["$accountId|Sent"] = FolderEntity(id = "$accountId|Sent", accountId = accountId, fullName = "Sent", displayName = "Sent")
+        assertEquals("Sent", repository.findSentFolderKey(accountId))
     }
 
     @Test
